@@ -274,6 +274,8 @@ const SiteSubnetPage = () => {
     if (!user) return;
     
     try {
+      console.log("Attempting to delete subnet with ID:", id);
+      
       const { error } = await supabase
         .from('subnets')
         .delete()
@@ -286,6 +288,7 @@ const SiteSubnetPage = () => {
       }
       
       setSubnets((prev) => prev.filter((subnet) => subnet.id !== id));
+      
       toast({
         title: "Subnet removed",
         description: "The subnet has been removed from your site.",
@@ -404,6 +407,7 @@ const SiteSubnetPage = () => {
                           variant="ghost"
                           size="icon"
                           onClick={() => removeSubnet(subnet.id)}
+                          aria-label={`Remove ${subnet.name}`}
                         >
                           <TrashIcon className="h-4 w-4" />
                         </Button>
