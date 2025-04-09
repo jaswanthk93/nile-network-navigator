@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
 import { MonitorIcon, SearchIcon, ServerIcon, WifiIcon, RouterIcon, PrinterIcon } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Device {
   id: string;
@@ -19,88 +21,57 @@ interface Device {
   status: "online" | "offline" | "unknown";
 }
 
-const mockDevices: Device[] = [
-  {
-    id: "1",
-    ipAddress: "192.168.10.1",
-    hostname: "CORE-SW-01",
-    make: "Cisco",
-    model: "Catalyst 3850",
-    category: "Switch",
-    status: "online"
-  },
-  {
-    id: "2",
-    ipAddress: "192.168.10.2",
-    hostname: "DIST-SW-01",
-    make: "Cisco",
-    model: "Catalyst 3650",
-    category: "Switch",
-    status: "online"
-  },
-  {
-    id: "3",
-    ipAddress: "192.168.10.10",
-    hostname: "ACC-SW-01",
-    make: "Juniper",
-    model: "EX3400",
-    category: "Switch",
-    status: "online"
-  },
-  {
-    id: "4",
-    ipAddress: "192.168.10.20",
-    hostname: "WIFI-CTRL-01",
-    make: "Aruba",
-    model: "AP-505",
-    category: "Controller",
-    status: "online"
-  },
-  {
-    id: "5",
-    ipAddress: "192.168.10.30",
-    hostname: "AP-LOBBY-01",
-    make: "Aruba",
-    model: "AP-303",
-    category: "AP",
-    status: "online"
-  },
-  {
-    id: "6",
-    ipAddress: "192.168.10.31",
-    hostname: "AP-OFFICE-01",
-    make: "Aruba",
-    model: "AP-303",
-    category: "AP",
-    status: "online"
-  },
-  {
-    id: "7",
-    ipAddress: "192.168.10.32",
-    hostname: "AP-CONF-01",
-    make: "Aruba",
-    model: "AP-303",
-    category: "AP",
-    status: "offline"
-  },
-  {
-    id: "8",
-    ipAddress: "192.168.10.100",
-    hostname: "RTR-EDGE-01",
-    make: "Cisco",
-    model: "ISR 4451",
-    category: "Router",
-    status: "online"
-  }
-];
-
 const DevicesPage = () => {
-  const [devices, setDevices] = useState<Device[]>(mockDevices);
+  const [devices, setDevices] = useState<Device[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Fetch devices from Supabase
+  useEffect(() => {
+    const fetchDevices = async () => {
+      if (!user) return;
+      
+      setIsLoading(true);
+      
+      const { data, error } = await supabase
+        .from('devices')
+        .select('*');
+      
+      if (error) {
+        console.error('Error fetching devices:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load device information.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+      
+      // Transform the data to match our Device interface
+      const transformedDevices = data.map(device => ({
+        id: device.id,
+        ipAddress: device.ip_address,
+        hostname: device.hostname || '',
+        make: device.make || '',
+        model: device.model || '',
+        category: (device.category as "AP" | "Switch" | "Controller" | "Router" | "Other") || 'Other',
+        status: (device.status as "online" | "offline" | "unknown") || 'unknown'
+      }));
+      
+      setDevices(transformedDevices);
+      setIsLoading(false);
+      
+      console.log('Devices loaded:', transformedDevices);
+    };
+
+    fetchDevices();
+  }, [user, toast]);
 
   const filteredDevices = devices.filter(device => {
     const matchesSearch = device.hostname.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -109,10 +80,44 @@ const DevicesPage = () => {
     return matchesSearch && matchesCategory;
   });
 
-  const handleSaveEdit = (id: string, field: keyof Device, value: string) => {
-    setDevices(devices.map(device => 
-      device.id === id ? { ...device, [field]: value } : device
-    ));
+  const handleSaveEdit = async (id: string, field: keyof Device, value: string) => {
+    try {
+      // Update local state
+      setDevices(devices.map(device => 
+        device.id === id ? { ...device, [field]: value } : device
+      ));
+      
+      // Map fields to database column names
+      const fieldMapping: Record<string, string> = {
+        'hostname': 'hostname',
+        'make': 'make',
+        'model': 'model',
+        'category': 'category'
+      };
+      
+      // Update the database
+      const { error } = await supabase
+        .from('devices')
+        .update({ [fieldMapping[field]]: value })
+        .eq('id', id);
+      
+      if (error) {
+        throw error;
+      }
+      
+      toast({
+        title: "Device updated",
+        description: `Successfully updated device ${field}.`,
+      });
+    } catch (error) {
+      console.error('Error updating device:', error);
+      toast({
+        title: "Update failed",
+        description: "Failed to update device information.",
+        variant: "destructive",
+      });
+    }
+    
     setEditingId(null);
   };
 
@@ -138,6 +143,14 @@ const DevicesPage = () => {
     });
     navigate("/vlans");
   };
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto flex items-center justify-center h-screen">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto max-w-6xl space-y-8">
@@ -206,7 +219,9 @@ const DevicesPage = () => {
                 {filteredDevices.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
-                      No devices found matching filter criteria
+                      {devices.length === 0 
+                        ? "No devices discovered yet. Run a network discovery first." 
+                        : "No devices found matching filter criteria"}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -231,7 +246,7 @@ const DevicesPage = () => {
                             className="cursor-pointer hover:text-primary"
                             onClick={() => setEditingId(`${device.id}-hostname`)}
                           >
-                            {device.hostname}
+                            {device.hostname || "Click to add hostname"}
                           </span>
                         )}
                       </TableCell>
@@ -257,7 +272,7 @@ const DevicesPage = () => {
                             className="cursor-pointer hover:text-primary"
                             onClick={() => setEditingId(`${device.id}-make`)}
                           >
-                            {device.make}
+                            {device.make || "Click to add make"}
                           </span>
                         )}
                       </TableCell>
@@ -279,7 +294,7 @@ const DevicesPage = () => {
                             className="cursor-pointer hover:text-primary"
                             onClick={() => setEditingId(`${device.id}-model`)}
                           >
-                            {device.model}
+                            {device.model || "Click to add model"}
                           </span>
                         )}
                       </TableCell>
@@ -339,7 +354,7 @@ const DevicesPage = () => {
           >
             Back to Discovery
           </Button>
-          <Button onClick={handleConfirmDevices}>
+          <Button onClick={handleConfirmDevices} disabled={devices.length === 0}>
             Confirm Devices
           </Button>
         </CardFooter>

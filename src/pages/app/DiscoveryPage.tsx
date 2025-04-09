@@ -1,11 +1,13 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import { ScanSearchIcon, AlertTriangleIcon, WifiIcon, ServerIcon } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface DiscoveryStatus {
   status: "idle" | "scanning" | "connecting" | "gathering" | "complete" | "error";
@@ -24,8 +26,67 @@ const DiscoveryPage = () => {
   });
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
-  const startDiscovery = () => {
+  // Fetch subnets data to check if there are any subnets to scan
+  useEffect(() => {
+    const fetchSubnets = async () => {
+      if (!user) return;
+      
+      const { data: subnets, error } = await supabase
+        .from('subnets')
+        .select('*');
+      
+      if (error) {
+        console.error('Error fetching subnets:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load subnet information.",
+          variant: "destructive",
+        });
+      }
+
+      // Log the subnets for debugging
+      console.log('Subnets available for scanning:', subnets);
+    };
+
+    fetchSubnets();
+  }, [user, toast]);
+
+  const startDiscovery = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "You must be logged in to start discovery.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if we have any subnets to scan
+    const { data: subnets, error: subnetsError } = await supabase
+      .from('subnets')
+      .select('*');
+    
+    if (subnetsError) {
+      toast({
+        title: "Error",
+        description: "Failed to load subnet information.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!subnets || subnets.length === 0) {
+      toast({
+        title: "No Subnets",
+        description: "Please add at least one subnet before starting discovery.",
+        variant: "destructive",
+      });
+      navigate('/site-subnet');
+      return;
+    }
+
     setDiscovery({
       status: "scanning",
       progress: 5,
@@ -33,13 +94,14 @@ const DiscoveryPage = () => {
       devices: 0,
     });
 
-    // Simulate discovery process
+    // Simulate discovery process - in a real implementation, this would make API calls 
+    // to a backend service that performs the actual network scanning
     setTimeout(() => {
       setDiscovery({
         status: "scanning",
         progress: 25,
-        message: "Found 18 devices, continuing scan...",
-        devices: 18,
+        message: `Found devices on ${subnets[0].cidr}, continuing scan...`,
+        devices: 8,
       });
       
       setTimeout(() => {
@@ -47,7 +109,7 @@ const DiscoveryPage = () => {
           status: "connecting",
           progress: 40,
           message: "Connecting to discovered devices...",
-          devices: 24,
+          devices: 12,
         });
         
         setTimeout(() => {
@@ -55,20 +117,57 @@ const DiscoveryPage = () => {
             status: "gathering",
             progress: 70,
             message: "Gathering device information...",
-            devices: 24,
+            devices: 12,
           });
           
-          setTimeout(() => {
+          setTimeout(async () => {
+            // At this point, in a real implementation, we would insert the discovered
+            // devices into the database
+            const mockDevices = Array.from({ length: 12 }, (_, i) => ({
+              site_id: subnets[0].site_id,
+              subnet_id: subnets[0].id,
+              ip_address: `192.168.1.${10 + i}`,
+              hostname: `DEVICE-${i + 1}`,
+              make: i % 2 === 0 ? 'Cisco' : 'Juniper',
+              model: `Model-${i + 1}`,
+              category: i % 3 === 0 ? 'Switch' : i % 3 === 1 ? 'Router' : 'AP',
+              status: 'online',
+              user_id: user.id
+            }));
+            
+            // Insert discovered devices into the database
+            const { error: insertError } = await supabase
+              .from('devices')
+              .upsert(mockDevices);
+            
+            if (insertError) {
+              console.error('Error inserting devices:', insertError);
+              setDiscovery({
+                status: "error",
+                progress: 70,
+                message: "Error saving device information",
+                devices: 12,
+                error: "Database error occurred while saving devices"
+              });
+              
+              toast({
+                title: "Database Error",
+                description: "Failed to save discovered devices.",
+                variant: "destructive",
+              });
+              return;
+            }
+            
             setDiscovery({
               status: "complete",
               progress: 100,
-              message: "Discovery complete! Found 24 devices.",
-              devices: 24,
+              message: `Discovery complete! Found ${mockDevices.length} devices.`,
+              devices: mockDevices.length,
             });
             
             toast({
               title: "Discovery complete",
-              description: "Successfully discovered 24 network devices.",
+              description: `Successfully discovered ${mockDevices.length} network devices.`,
             });
           }, 3000);
         }, 2500);
@@ -90,12 +189,12 @@ const DiscoveryPage = () => {
         progress: 15,
         message: "Error during discovery",
         devices: 3,
-        error: "Connection timeout on subnet 192.168.10.0/24"
+        error: "Connection timeout on subnet"
       });
       
       toast({
         title: "Discovery error",
-        description: "Connection timeout on subnet 192.168.10.0/24",
+        description: "Connection timeout on subnet",
         variant: "destructive",
       });
     }, 2000);
@@ -177,7 +276,7 @@ const DiscoveryPage = () => {
                   <h3 className="font-medium">Subnets Scanned</h3>
                 </div>
                 <p className="mt-2 text-2xl font-bold">
-                  {discovery.progress < 30 ? "1/2" : "2/2"}
+                  {discovery.progress < 30 ? "1/1" : "1/1"}
                 </p>
               </div>
             </div>

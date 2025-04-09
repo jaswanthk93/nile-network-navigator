@@ -9,7 +9,166 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      devices: {
+        Row: {
+          category: string | null
+          created_at: string
+          hostname: string | null
+          id: string
+          ip_address: string
+          last_seen: string
+          make: string | null
+          model: string | null
+          site_id: string
+          status: string | null
+          subnet_id: string
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          hostname?: string | null
+          id?: string
+          ip_address: string
+          last_seen?: string
+          make?: string | null
+          model?: string | null
+          site_id: string
+          status?: string | null
+          subnet_id: string
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          hostname?: string | null
+          id?: string
+          ip_address?: string
+          last_seen?: string
+          make?: string | null
+          model?: string | null
+          site_id?: string
+          status?: string | null
+          subnet_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "devices_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devices_subnet_id_fkey"
+            columns: ["subnet_id"]
+            isOneToOne: false
+            referencedRelation: "subnets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sites: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          location: string | null
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          location?: string | null
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          location?: string | null
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      subnets: {
+        Row: {
+          cidr: string
+          created_at: string
+          description: string | null
+          id: string
+          site_id: string
+          user_id: string
+        }
+        Insert: {
+          cidr: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          site_id: string
+          user_id: string
+        }
+        Update: {
+          cidr?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          site_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subnets_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vlans: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          site_id: string
+          user_id: string
+          vlan_id: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          site_id: string
+          user_id: string
+          vlan_id: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          site_id?: string
+          user_id?: string
+          vlan_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vlans_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
