@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
@@ -225,6 +226,9 @@ const SiteSubnetPage = () => {
     }
     
     try {
+      // Create the CIDR representation for database storage
+      const cidr = `${values.subnet}/${values.prefix}`;
+      
       const { data, error } = await supabase
         .from('subnets')
         .insert({
