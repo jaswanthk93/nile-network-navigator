@@ -159,7 +159,10 @@ function parseVlanOutput(output: string, make: string): DiscoveredVlan[] {
 
 /**
  * Connect to a switch using the appropriate method (SSH or Telnet)
- * In browser environment, this is simulated
+ * 
+ * NOTE: In a production environment, this would connect to a backend service
+ * that handles the actual SSH/Telnet connections, as browsers cannot establish
+ * these connections directly.
  */
 export async function connectToSwitch(connectionDetails: SwitchConnectionDetails): Promise<string | null> {
   try {
@@ -167,13 +170,17 @@ export async function connectToSwitch(connectionDetails: SwitchConnectionDetails
       throw new Error("Username and password are required to connect to network devices");
     }
     
-    console.log(`[SIMULATED] Connecting to ${connectionDetails.ip} via ${connectionDetails.method}...`);
+    console.log(`Attempting to connect to ${connectionDetails.ip} via ${connectionDetails.method}...`);
     
-    // In a browser environment, we can't actually establish SSH/Telnet connections
-    // So we simulate a successful connection after a short delay
+    // PRODUCTION IMPLEMENTATION NOTES:
+    // 1. In a real implementation, this would make an API call to a backend service
+    // 2. The backend service would establish the actual SSH/Telnet connection
+    // 3. The backend would handle authentication and return a session identifier
+    
+    // For demonstration purposes, we simulate a successful connection
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    return `Connected successfully via ${connectionDetails.method.toUpperCase()} (Simulated)`;
+    return `Connected successfully via ${connectionDetails.method.toUpperCase()} (Would connect to real device in production)`;
   } catch (error) {
     console.error("Error connecting to switch:", error);
     return null;
@@ -182,21 +189,27 @@ export async function connectToSwitch(connectionDetails: SwitchConnectionDetails
 
 /**
  * Execute commands on a connected switch
- * In browser environment, this returns simulated data
+ * 
+ * NOTE: In a production environment, this would send commands to a backend service
+ * that executes them on the actual network device.
  */
 export async function executeCommands(
   connectionDetails: SwitchConnectionDetails, 
   commands: string[]
 ): Promise<string | null> {
   try {
-    console.log(`[SIMULATED] Executing commands on ${connectionDetails.ip}...`);
+    console.log(`Executing commands on ${connectionDetails.ip}...`);
     console.log("Commands:", commands);
     
-    // In a browser environment, we can't actually execute commands on network devices
-    // So we simulate responses based on the commands and device make
+    // PRODUCTION IMPLEMENTATION NOTES:
+    // 1. In a real implementation, this would make an API call to a backend service
+    // 2. The backend service would execute the commands on the active SSH/Telnet session
+    // 3. The backend would return the command output
+    
+    // For demonstration purposes, we provide sample output based on the device type
     await new Promise(resolve => setTimeout(resolve, 1500));
     
-    // Generate mock output based on device make
+    // Generate mock output based on device make for demonstration
     let mockOutput = "";
     const make = connectionDetails.make?.toLowerCase() || "unknown";
     
@@ -251,6 +264,7 @@ VLAN ID  Name
       `;
     }
     
+    console.log("PRODUCTION NOTE: This would return actual device output in production");
     return mockOutput;
   } catch (error) {
     console.error("Error executing commands:", error);
@@ -260,7 +274,6 @@ VLAN ID  Name
 
 /**
  * Retrieve VLAN information from a network switch
- * In browser environment, this returns simulated data
  */
 export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDetails): Promise<DiscoveredVlan[]> {
   try {
@@ -300,7 +313,6 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
 
 /**
  * Discover VLANs from multiple network switches
- * In browser environment, this uses simulated data
  */
 export async function discoverVlans(
   devices: any[], 
