@@ -235,6 +235,7 @@ const DiscoveryPage = () => {
       progress: 5,
       message: "Scanning subnets for devices...",
       devices: 0,
+      devicesNeedingVerification: 0
     });
 
     setTimeout(() => {
@@ -243,6 +244,7 @@ const DiscoveryPage = () => {
         progress: 15,
         message: "Error during discovery",
         devices: 0,
+        devicesNeedingVerification: 0,
         error: "Connection timeout on subnet"
       });
       

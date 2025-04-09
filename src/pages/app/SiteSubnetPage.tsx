@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
@@ -48,6 +47,23 @@ interface Subnet {
   accessMethod: "telnet" | "ssh";
 }
 
+const isSubnetWithin = (subnet1: string, prefix1: string, subnet2: string, prefix2: string): boolean => {
+  const ip1Parts = subnet1.split('.').map(Number);
+  const ip2Parts = subnet2.split('.').map(Number);
+  
+  const ip1Numeric = (ip1Parts[0] << 24) | (ip1Parts[1] << 16) | (ip1Parts[2] << 8) | ip1Parts[3];
+  const ip2Numeric = (ip2Parts[0] << 24) | (ip2Parts[1] << 16) | (ip2Parts[2] << 8) | ip2Parts[3];
+  
+  const mask1 = ~((1 << (32 - parseInt(prefix1))) - 1);
+  const mask2 = ~((1 << (32 - parseInt(prefix2))) - 1);
+  
+  if (parseInt(prefix1) <= parseInt(prefix2)) {
+    return (ip1Numeric & mask1) === (ip2Numeric & mask1);
+  }
+  
+  return (ip1Numeric & mask2) === (ip2Numeric & mask2);
+};
+
 const SiteSubnetPage = () => {
   const [subnets, setSubnets] = useState<Subnet[]>([]);
   const [addingSubnet, setAddingSubnet] = useState(false);
@@ -77,12 +93,10 @@ const SiteSubnetPage = () => {
     },
   });
 
-  // Load existing subnets if available
   useEffect(() => {
     const loadExistingData = async () => {
       if (!user) return;
       
-      // Check for existing sites
       const { data: sites, error: sitesError } = await supabase
         .from('sites')
         .select('*')
@@ -102,7 +116,6 @@ const SiteSubnetPage = () => {
         siteForm.setValue('address', site.location || '');
         setSiteAdded(true);
         
-        // Load subnets for this site
         const { data: subnetData, error: subnetsError } = await supabase
           .from('subnets')
           .select('*')
@@ -120,7 +133,7 @@ const SiteSubnetPage = () => {
             name: subnet.description || 'Subnet',
             subnet: subnet.cidr.split('/')[0],
             prefix: subnet.cidr.split('/')[1] || '24',
-            username: 'admin', // These fields aren't in the DB schema, using defaults
+            username: 'admin',
             password: 'password',
             accessMethod: 'ssh' as "ssh" | "telnet"
           }));
@@ -183,11 +196,35 @@ const SiteSubnetPage = () => {
       return;
     }
     
+    const newSubnetCidr = `${values.subnet}/${values.prefix}`;
+    
+    const exactDuplicate = subnets.some(
+      subnet => subnet.subnet === values.subnet && subnet.prefix === values.prefix
+    );
+    
+    if (exactDuplicate) {
+      toast({
+        title: "Duplicate Subnet",
+        description: `Subnet ${newSubnetCidr} already exists.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const overlappingSubnet = subnets.find(subnet => 
+      isSubnetWithin(subnet.subnet, subnet.prefix, values.subnet, values.prefix)
+    );
+    
+    if (overlappingSubnet) {
+      toast({
+        title: "Overlapping Subnet",
+        description: `Subnet ${newSubnetCidr} overlaps with existing subnet ${overlappingSubnet.subnet}/${overlappingSubnet.prefix}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
     try {
-      // Create the CIDR representation (e.g., 192.168.1.0/24)
-      const cidr = `${values.subnet}/${values.prefix}`;
-      
-      // First save to Supabase
       const { data, error } = await supabase
         .from('subnets')
         .insert({
@@ -201,7 +238,6 @@ const SiteSubnetPage = () => {
       
       if (error) throw error;
       
-      // Then update the local state
       const newSubnet: Subnet = {
         id: data.id,
         name: values.name,
@@ -240,7 +276,10 @@ const SiteSubnetPage = () => {
         .eq('id', id)
         .eq('user_id', user.id);
       
-      if (error) throw error;
+      if (error) {
+        console.error("Delete error:", error);
+        throw error;
+      }
       
       setSubnets((prev) => prev.filter((subnet) => subnet.id !== id));
       toast({
@@ -251,7 +290,7 @@ const SiteSubnetPage = () => {
       console.error("Error removing subnet:", error);
       toast({
         title: "Error removing subnet",
-        description: "There was a problem removing the subnet.",
+        description: "There was a problem removing the subnet. Please try again.",
         variant: "destructive",
       });
     }
@@ -267,7 +306,6 @@ const SiteSubnetPage = () => {
       return;
     }
     
-    // Store the subnet IDs in session storage for the discovery page
     sessionStorage.setItem('subnetIds', JSON.stringify(subnets.map(subnet => subnet.id)));
     navigate("/discovery");
   };
