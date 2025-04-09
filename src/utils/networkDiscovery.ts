@@ -488,7 +488,7 @@ interface DiscoveredDevice {
   model: string | null;
   category: string | null;
   status: string;
-  needs_verification: boolean;
+  needs_verification?: boolean; // Changed from required to optional
 }
 
 // Function to discover devices in a subnet
@@ -586,7 +586,7 @@ export async function saveDiscoveredDevices(
     category: device.category,
     status: device.status,
     mac_address: device.mac_address,
-    needs_verification: device.needs_verification
+    // We omit needs_verification from the database insert since it's not in the DB schema
   }));
   
   const { error } = await supabase
