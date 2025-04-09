@@ -10,8 +10,8 @@ const Index = () => {
   useEffect(() => {
     if (!isLoading) {
       if (isAuthenticated) {
-        // If user is already authenticated, let AppLayout handle the routing
-        // WelcomePage will be rendered
+        // If user is already authenticated, redirect to welcome page
+        navigate('/');
       } else {
         // Redirect to login if not authenticated
         navigate('/login');
