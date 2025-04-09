@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
@@ -226,7 +225,6 @@ const SiteSubnetPage = () => {
     }
     
     try {
-      // Create the CIDR representation for database storage
       const cidr = `${values.subnet}/${values.prefix}`;
       
       const { data, error } = await supabase
@@ -275,6 +273,25 @@ const SiteSubnetPage = () => {
     
     try {
       console.log("Attempting to delete subnet with ID:", id);
+      
+      const { data: associatedDevices, error: checkError } = await supabase
+        .from('devices')
+        .select('id')
+        .eq('subnet_id', id);
+      
+      if (checkError) {
+        console.error("Error checking associated devices:", checkError);
+        throw checkError;
+      }
+      
+      if (associatedDevices && associatedDevices.length > 0) {
+        toast({
+          title: "Cannot delete subnet",
+          description: `This subnet has ${associatedDevices.length} device(s) associated with it. Please delete the devices first.`,
+          variant: "destructive",
+        });
+        return;
+      }
       
       const { error } = await supabase
         .from('subnets')
