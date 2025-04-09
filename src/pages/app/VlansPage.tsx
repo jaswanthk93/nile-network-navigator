@@ -9,6 +9,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { FolderKanbanIcon, LayersIcon, TagIcon, Loader2Icon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { discoverVlans } from "@/utils/switchConnection";
 
 interface Vlan {
   id: string;
@@ -22,6 +23,8 @@ interface Vlan {
 const VlansPage = () => {
   const [vlans, setVlans] = useState<Vlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [discoveryInProgress, setDiscoveryInProgress] = useState(false);
+  const [discoveryProgress, setDiscoveryProgress] = useState({ message: "", percent: 0 });
   const [editingCell, setEditingCell] = useState<{id: string, field: keyof Vlan} | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -76,9 +79,6 @@ const VlansPage = () => {
 
         // If we don't have VLAN data already, we need to fetch from the network
         if (!vlanData || vlanData.length === 0) {
-          // In a real implementation, this is where we would query the network devices
-          // For now, we'll populate with discovered information from the devices
-          
           console.log("No VLANs found in database, attempting to discover...");
           
           // Group devices by category to identify switches
@@ -96,80 +96,59 @@ const VlansPage = () => {
             return;
           }
           
-          // In a real implementation, we would connect to each switch and retrieve VLAN information
-          // For now, we'll create a message to inform the user
-          toast({
-            title: "VLAN Discovery",
-            description: `Found ${switches.length} switches. Unable to connect directly to fetch VLAN information. Please define VLANs manually.`,
-          });
+          setDiscoveryInProgress(true);
           
-          // Create placeholder VLANs based on common configurations
-          const discoveredVlans: Vlan[] = [
-            {
-              id: "1",
-              vlanId: 1,
-              name: "Default",
-              segmentName: "Management",
-              subnet: "", // Will be populated from device data if available
-              usedBy: switches.map(s => s.hostname || s.ip_address).filter(Boolean) as string[]
-            }
-          ];
+          // Start the VLAN discovery process
+          const updateProgress = (message: string, progress: number) => {
+            setDiscoveryProgress({
+              message,
+              percent: progress
+            });
+          };
           
-          // Look for subnet information in the discovered devices
-          const subnets = new Set<string>();
-          devices.forEach(device => {
-            if (device.ip_address) {
-              // Extract subnet from IP (simplified approach)
-              const ipParts = device.ip_address.split('.');
-              if (ipParts.length === 4) {
-                const subnet = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}.0/24`;
-                subnets.add(subnet);
+          // Use our real discovery method
+          const discoveredVlans = await discoverVlans(devices, updateProgress);
+          
+          if (discoveredVlans.length === 0) {
+            toast({
+              title: "VLAN Discovery",
+              description: `Unable to discover VLANs automatically. Please define VLANs manually or check device connectivity.`,
+              variant: "destructive",
+            });
+            
+            // Create default VLAN as fallback
+            const defaultVlans: Vlan[] = [
+              {
+                id: "1",
+                vlanId: 1,
+                name: "Default",
+                segmentName: "Management",
+                subnet: "", 
+                usedBy: switches.map(s => s.hostname || s.ip_address).filter(Boolean) as string[]
               }
-            }
-          });
-          
-          // Add subnets as potential VLANs
-          let vlanCounter = 10; // Start VLANs at 10 (common practice)
-          subnets.forEach(subnet => {
-            if (subnet && !discoveredVlans.some(v => v.subnet === subnet)) {
-              discoveredVlans.push({
-                id: `generated-${vlanCounter}`,
-                vlanId: vlanCounter,
-                name: `VLAN_${vlanCounter}`,
-                segmentName: "", // User will need to assign this
-                subnet: subnet,
-                usedBy: switches.slice(0, Math.min(2, switches.length))
-                  .map(s => s.hostname || s.ip_address)
-                  .filter(Boolean) as string[]
-              });
-              vlanCounter += 10;
-            }
-          });
-          
-          // If we still don't have VLANs, add some common ones
-          if (discoveredVlans.length === 1) {
-            const commonVlans = [
-              { id: "10", vlanId: 10, name: "User_VLAN", segmentName: "", subnet: "" },
-              { id: "20", vlanId: 20, name: "Voice_VLAN", segmentName: "", subnet: "" },
-              { id: "30", vlanId: 30, name: "Guest_VLAN", segmentName: "", subnet: "" }
             ];
             
-            commonVlans.forEach(vlan => {
-              discoveredVlans.push({
-                ...vlan,
-                usedBy: switches.slice(0, Math.min(2, switches.length))
-                  .map(s => s.hostname || s.ip_address)
-                  .filter(Boolean) as string[]
-              });
+            setVlans(defaultVlans);
+          } else {
+            // Map discovered VLANs to our interface
+            const mappedVlans: Vlan[] = discoveredVlans.map((vlan, index) => ({
+              id: `discovered-${vlan.vlanId}`,
+              vlanId: vlan.vlanId,
+              name: vlan.name,
+              segmentName: "", // User will need to assign this
+              subnet: vlan.subnet || "",
+              usedBy: vlan.usedBy
+            }));
+            
+            setVlans(mappedVlans);
+            
+            toast({
+              title: "VLAN Discovery Complete",
+              description: `Successfully discovered ${mappedVlans.length} VLANs from your network devices.`,
             });
           }
           
-          setVlans(discoveredVlans);
-          
-          toast({
-            title: "Initial VLAN Configuration Created",
-            description: `Created ${discoveredVlans.length} initial VLAN entries based on network analysis. Please review and assign segment names.`,
-          });
+          setDiscoveryInProgress(false);
         } else {
           // Format the database VLANs to match our interface
           const formattedVlans: Vlan[] = vlanData.map(dbVlan => {
@@ -231,7 +210,7 @@ const VlansPage = () => {
 
       // Save VLANs to database
       const vlansToSave = vlans.map(vlan => ({
-        id: vlan.id.startsWith('generated-') ? undefined : vlan.id,
+        id: vlan.id.startsWith('discovered-') ? undefined : vlan.id,
         user_id: user!.id,
         site_id: localStorage.getItem('currentSiteId') || null, // Get from storage or context
         vlan_id: vlan.vlanId,
@@ -266,6 +245,32 @@ const VlansPage = () => {
     }
   };
 
+  const handleAddVlan = () => {
+    // Find the highest VLAN ID and add 10 for the new one
+    const maxVlanId = Math.max(0, ...vlans.map(v => v.vlanId));
+    const newVlanId = maxVlanId + 10;
+    
+    const newVlan: Vlan = {
+      id: `new-${Date.now()}`,
+      vlanId: newVlanId,
+      name: `VLAN_${newVlanId}`,
+      segmentName: "",
+      subnet: "",
+      usedBy: []
+    };
+    
+    setVlans([...vlans, newVlan]);
+    
+    // Set this new VLAN to editing mode for the name
+    setTimeout(() => {
+      setEditingCell({id: newVlan.id, field: "name"});
+    }, 100);
+  };
+
+  const handleRemoveVlan = (id: string) => {
+    setVlans(vlans.filter(vlan => vlan.id !== id));
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto max-w-6xl flex flex-col items-center justify-center h-[70vh]">
@@ -274,6 +279,24 @@ const VlansPage = () => {
         <p className="text-muted-foreground">
           Retrieving VLAN data from network devices and database
         </p>
+      </div>
+    );
+  }
+
+  if (discoveryInProgress) {
+    return (
+      <div className="container mx-auto max-w-6xl flex flex-col items-center justify-center h-[70vh]">
+        <Loader2Icon className="h-12 w-12 animate-spin text-primary mb-4" />
+        <h2 className="text-xl font-semibold">Discovering VLANs...</h2>
+        <p className="text-muted-foreground mb-4">
+          {discoveryProgress.message}
+        </p>
+        <div className="w-full max-w-md h-2 bg-secondary rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-primary transition-all duration-300" 
+            style={{ width: `${discoveryProgress.percent}%` }}
+          ></div>
+        </div>
       </div>
     );
   }
@@ -305,77 +328,170 @@ const VlansPage = () => {
               <p className="text-muted-foreground mt-2">
                 Unable to discover VLANs from your network devices.
               </p>
-              <Button 
-                variant="outline" 
-                className="mt-4"
-                onClick={() => navigate('/discovery')}
-              >
-                Go to Discovery
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-2 justify-center mt-4">
+                <Button 
+                  variant="outline" 
+                  onClick={() => navigate('/discovery')}
+                >
+                  Go to Discovery
+                </Button>
+                <Button
+                  onClick={handleAddVlan}
+                >
+                  Add VLAN Manually
+                </Button>
+              </div>
             </div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[80px]">VLAN ID</TableHead>
-                    <TableHead>VLAN Name</TableHead>
-                    <TableHead className="w-[200px]">Segment Name</TableHead>
-                    <TableHead>Subnet</TableHead>
-                    <TableHead>Used By</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {vlans.map((vlan) => (
-                    <TableRow key={vlan.id}>
-                      <TableCell className="font-medium">{vlan.vlanId}</TableCell>
-                      <TableCell>{vlan.name}</TableCell>
-                      <TableCell>
-                        {editingCell?.id === vlan.id && editingCell?.field === "segmentName" ? (
-                          <Input
-                            defaultValue={vlan.segmentName}
-                            className="h-8"
-                            onBlur={(e) => handleSaveEdit(vlan.id, "segmentName", e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                handleSaveEdit(vlan.id, "segmentName", (e.target as HTMLInputElement).value);
-                              }
-                            }}
-                            autoFocus
-                          />
-                        ) : (
-                          <div
-                            className="flex cursor-pointer items-center gap-1 hover:text-primary"
-                            onClick={() => setEditingCell({id: vlan.id, field: "segmentName"})}
-                          >
-                            <TagIcon className="h-4 w-4" />
-                            {vlan.segmentName || <span className="text-muted-foreground italic">Click to assign</span>}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>{vlan.subnet || "N/A"}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {vlan.usedBy.map((device, idx) => (
-                            <span 
-                              key={idx}
-                              className="inline-flex items-center rounded-full bg-muted px-2 py-1 text-xs font-medium"
-                            >
-                              {device}
-                            </span>
-                          ))}
-                        </div>
-                      </TableCell>
+            <div className="space-y-4">
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[80px]">VLAN ID</TableHead>
+                      <TableHead>VLAN Name</TableHead>
+                      <TableHead className="w-[200px]">Segment Name</TableHead>
+                      <TableHead>Subnet</TableHead>
+                      <TableHead>Used By</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {vlans.map((vlan) => (
+                      <TableRow key={vlan.id}>
+                        <TableCell className="font-medium">
+                          {editingCell?.id === vlan.id && editingCell?.field === "vlanId" ? (
+                            <Input
+                              type="number"
+                              defaultValue={vlan.vlanId.toString()}
+                              className="h-8 w-20"
+                              onBlur={(e) => handleSaveEdit(vlan.id, "vlanId", e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleSaveEdit(vlan.id, "vlanId", (e.target as HTMLInputElement).value);
+                                }
+                              }}
+                              autoFocus
+                            />
+                          ) : (
+                            <div
+                              className="cursor-pointer hover:text-primary"
+                              onClick={() => setEditingCell({id: vlan.id, field: "vlanId"})}
+                            >
+                              {vlan.vlanId}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingCell?.id === vlan.id && editingCell?.field === "name" ? (
+                            <Input
+                              defaultValue={vlan.name}
+                              className="h-8"
+                              onBlur={(e) => handleSaveEdit(vlan.id, "name", e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleSaveEdit(vlan.id, "name", (e.target as HTMLInputElement).value);
+                                }
+                              }}
+                              autoFocus
+                            />
+                          ) : (
+                            <div
+                              className="cursor-pointer hover:text-primary"
+                              onClick={() => setEditingCell({id: vlan.id, field: "name"})}
+                            >
+                              {vlan.name}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingCell?.id === vlan.id && editingCell?.field === "segmentName" ? (
+                            <Input
+                              defaultValue={vlan.segmentName}
+                              className="h-8"
+                              onBlur={(e) => handleSaveEdit(vlan.id, "segmentName", e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleSaveEdit(vlan.id, "segmentName", (e.target as HTMLInputElement).value);
+                                }
+                              }}
+                              autoFocus
+                            />
+                          ) : (
+                            <div
+                              className="flex cursor-pointer items-center gap-1 hover:text-primary"
+                              onClick={() => setEditingCell({id: vlan.id, field: "segmentName"})}
+                            >
+                              <TagIcon className="h-4 w-4" />
+                              {vlan.segmentName || <span className="text-muted-foreground italic">Click to assign</span>}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingCell?.id === vlan.id && editingCell?.field === "subnet" ? (
+                            <Input
+                              defaultValue={vlan.subnet}
+                              className="h-8"
+                              placeholder="e.g. 192.168.10.0/24"
+                              onBlur={(e) => handleSaveEdit(vlan.id, "subnet", e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleSaveEdit(vlan.id, "subnet", (e.target as HTMLInputElement).value);
+                                }
+                              }}
+                              autoFocus
+                            />
+                          ) : (
+                            <div
+                              className="cursor-pointer hover:text-primary"
+                              onClick={() => setEditingCell({id: vlan.id, field: "subnet"})}
+                            >
+                              {vlan.subnet || "N/A"}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {vlan.usedBy.map((device, idx) => (
+                              <span 
+                                key={idx}
+                                className="inline-flex items-center rounded-full bg-muted px-2 py-1 text-xs font-medium"
+                              >
+                                {device}
+                              </span>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleRemoveVlan(vlan.id)}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              
+              <Button 
+                variant="outline" 
+                onClick={handleAddVlan}
+                className="mt-4"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-plus mr-2"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                Add VLAN
+              </Button>
+
+              <div className="mt-4 text-sm text-muted-foreground">
+                <p>Click on any field to edit. Segment names will be used for organizing devices in Nile.</p>
+              </div>
             </div>
           )}
-
-          <div className="mt-4 text-sm text-muted-foreground">
-            <p>Click on the segment name to edit. Segment names will be used for organizing devices in Nile.</p>
-          </div>
         </CardContent>
         <CardFooter className="flex justify-between border-t px-6 py-4">
           <Button 
