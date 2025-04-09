@@ -84,9 +84,15 @@ const SiteSubnetPage = () => {
   };
 
   const onSubnetSubmit = (values: SubnetFormValues) => {
+    // Fix: Ensure all required properties are assigned with proper types
     const newSubnet: Subnet = {
       id: crypto.randomUUID(),
-      ...values,
+      name: values.name,
+      subnet: values.subnet,
+      prefix: values.prefix,
+      username: values.username,
+      password: values.password,
+      accessMethod: values.accessMethod,
     };
     
     setSubnets((prev) => [...prev, newSubnet]);
