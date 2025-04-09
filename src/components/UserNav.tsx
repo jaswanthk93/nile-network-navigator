@@ -15,8 +15,12 @@ import { UserIcon } from 'lucide-react';
 export function UserNav() {
   const { user, logout } = useAuth();
   
-  const initials = user ? 
-    `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase() : 
+  // Access user metadata safely to get firstName and lastName
+  const firstName = user?.user_metadata?.first_name || '';
+  const lastName = user?.user_metadata?.last_name || '';
+  
+  const initials = firstName && lastName ? 
+    `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() : 
     'U';
   
   const handleLogout = () => {
@@ -38,7 +42,7 @@ export function UserNav() {
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
             <p className="text-sm font-medium leading-none">
-              {user?.firstName} {user?.lastName}
+              {firstName} {lastName}
             </p>
             <p className="text-xs leading-none text-muted-foreground">
               {user?.email}

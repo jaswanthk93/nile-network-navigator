@@ -17,6 +17,8 @@ const Index = () => {
         navigate('/login');
       }
     }
+    // For debugging
+    console.log('Index page:', { isAuthenticated, isLoading });
   }, [isAuthenticated, isLoading, navigate]);
 
   if (isLoading) {

@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import AuthLayout from "./layouts/AuthLayout";
 import AppLayout from "./layouts/AppLayout";
@@ -29,6 +29,9 @@ const App = () => (
           <Toaster />
           <Sonner />
           <Routes>
+            {/* Index Route */}
+            <Route path="/index" element={<Index />} />
+            
             {/* Auth Routes */}
             <Route element={<AuthLayout />}>
               <Route path="/register" element={<RegisterPage />} />
@@ -46,7 +49,7 @@ const App = () => (
               <Route path="/export" element={<ExportPage />} />
             </Route>
             
-            {/* Catch-all route */}
+            {/* Redirect root to index */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </TooltipProvider>

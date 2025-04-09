@@ -58,6 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Get the initial session
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+      console.log('Initial session:', initialSession?.user?.id);
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
       setIsLoading(false);
