@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -164,7 +165,10 @@ const DiscoveryPage = () => {
         updateDiscoveryProgress
       );
       
-      const devicesNeedingVerification = discoveredDevices.filter(device => device.needs_verification).length;
+      // Filter devices that need verification - we don't store this property in the database
+      const devicesNeedingVerification = discoveredDevices.filter(device => 
+        device.needs_verification === true
+      ).length;
       
       setDiscovery(prev => ({
         ...prev,
@@ -182,8 +186,15 @@ const DiscoveryPage = () => {
         progress: 80
       }));
       
+      // Before saving, remove needs_verification from each device since it's not in DB schema
+      const devicesToSave = discoveredDevices.map(device => {
+        // Create a new object without the needs_verification property
+        const { needs_verification, ...deviceData } = device;
+        return deviceData;
+      });
+      
       const { error: saveError } = await saveDiscoveredDevices(
-        discoveredDevices,
+        devicesToSave,
         subnetsToScan[currentSubnetIndex].site_id,
         subnetsToScan[currentSubnetIndex].id,
         user.id
