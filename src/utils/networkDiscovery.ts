@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 
 // Helper function to parse CIDR notation and get IP information
@@ -310,7 +309,6 @@ const OUI_DATABASE: Record<string, string> = {
   "00:1F:45": "Extreme",
   "00:23:A2": "Extreme",
   "00:25:45": "Extreme",
-  "00:26:55": "Extreme",
   "00:E0:2B": "Extreme",
   "5C:CC:A0": "Extreme",
   "74:67:F7": "Extreme",
