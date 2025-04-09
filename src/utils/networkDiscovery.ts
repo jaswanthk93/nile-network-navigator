@@ -177,7 +177,8 @@ export async function saveDiscoveredDevices(
     make: device.make,
     model: device.model,
     category: device.category,
-    status: device.status
+    status: device.status,
+    mac_address: device.mac_address
   }));
   
   const { error } = await supabase

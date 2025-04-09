@@ -17,6 +17,7 @@ export type Database = {
           id: string
           ip_address: string
           last_seen: string
+          mac_address: string | null
           make: string | null
           model: string | null
           site_id: string
@@ -31,6 +32,7 @@ export type Database = {
           id?: string
           ip_address: string
           last_seen?: string
+          mac_address?: string | null
           make?: string | null
           model?: string | null
           site_id: string
@@ -45,6 +47,7 @@ export type Database = {
           id?: string
           ip_address?: string
           last_seen?: string
+          mac_address?: string | null
           make?: string | null
           model?: string | null
           site_id?: string
