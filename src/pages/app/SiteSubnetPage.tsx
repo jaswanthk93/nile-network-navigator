@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -13,6 +13,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/use-toast";
 import { MapPinIcon, PlusIcon, TrashIcon, KeyIcon } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const siteFormSchema = z.object({
   siteName: z.string().min(2, { message: "Site name must be at least 2 characters." }),
@@ -50,8 +52,10 @@ const SiteSubnetPage = () => {
   const [subnets, setSubnets] = useState<Subnet[]>([]);
   const [addingSubnet, setAddingSubnet] = useState(false);
   const [siteAdded, setSiteAdded] = useState(false);
+  const [currentSiteId, setCurrentSiteId] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const siteForm = useForm<SiteFormValues>({
     resolver: zodResolver(siteFormSchema),
@@ -73,44 +77,184 @@ const SiteSubnetPage = () => {
     },
   });
 
-  const onSiteSubmit = (values: SiteFormValues) => {
-    // In a real app, this would save to an API
-    console.log("Site info:", values);
-    toast({
-      title: "Site information saved",
-      description: "Your site has been successfully added.",
-    });
-    setSiteAdded(true);
-  };
-
-  const onSubnetSubmit = (values: SubnetFormValues) => {
-    // Fix: Ensure all required properties are assigned with proper types
-    const newSubnet: Subnet = {
-      id: crypto.randomUUID(),
-      name: values.name,
-      subnet: values.subnet,
-      prefix: values.prefix,
-      username: values.username,
-      password: values.password,
-      accessMethod: values.accessMethod,
+  // Load existing subnets if available
+  useEffect(() => {
+    const loadExistingData = async () => {
+      if (!user) return;
+      
+      // Check for existing sites
+      const { data: sites, error: sitesError } = await supabase
+        .from('sites')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      if (sitesError) {
+        console.error("Error loading sites:", sitesError);
+        return;
+      }
+      
+      if (sites && sites.length > 0) {
+        const site = sites[0];
+        setCurrentSiteId(site.id);
+        siteForm.setValue('siteName', site.name);
+        siteForm.setValue('address', site.location || '');
+        setSiteAdded(true);
+        
+        // Load subnets for this site
+        const { data: subnetData, error: subnetsError } = await supabase
+          .from('subnets')
+          .select('*')
+          .eq('site_id', site.id)
+          .eq('user_id', user.id);
+        
+        if (subnetsError) {
+          console.error("Error loading subnets:", subnetsError);
+          return;
+        }
+        
+        if (subnetData && subnetData.length > 0) {
+          const loadedSubnets = subnetData.map(subnet => ({
+            id: subnet.id,
+            name: subnet.description || 'Subnet',
+            subnet: subnet.cidr.split('/')[0],
+            prefix: subnet.cidr.split('/')[1] || '24',
+            username: 'admin', // These fields aren't in the DB schema, using defaults
+            password: 'password',
+            accessMethod: 'ssh' as "ssh" | "telnet"
+          }));
+          
+          setSubnets(loadedSubnets);
+        }
+      }
     };
     
-    setSubnets((prev) => [...prev, newSubnet]);
-    setAddingSubnet(false);
-    subnetForm.reset();
+    loadExistingData();
+  }, [user]);
+
+  const onSiteSubmit = async (values: SiteFormValues) => {
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please log in to add site information.",
+        variant: "destructive",
+      });
+      navigate('/login');
+      return;
+    }
     
-    toast({
-      title: "Subnet added",
-      description: `Subnet ${values.name} has been added to your site.`,
-    });
+    try {
+      const { data, error } = await supabase
+        .from('sites')
+        .insert({
+          name: values.siteName,
+          location: values.address,
+          user_id: user.id
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      setCurrentSiteId(data.id);
+      toast({
+        title: "Site information saved",
+        description: "Your site has been successfully added.",
+      });
+      setSiteAdded(true);
+    } catch (error) {
+      console.error("Error saving site:", error);
+      toast({
+        title: "Error saving site",
+        description: "There was a problem saving your site information.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const removeSubnet = (id: string) => {
-    setSubnets((prev) => prev.filter((subnet) => subnet.id !== id));
-    toast({
-      title: "Subnet removed",
-      description: "The subnet has been removed from your site.",
-    });
+  const onSubnetSubmit = async (values: SubnetFormValues) => {
+    if (!user || !currentSiteId) {
+      toast({
+        title: "Error",
+        description: "Site must be created before adding subnets.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    try {
+      // Create the CIDR representation (e.g., 192.168.1.0/24)
+      const cidr = `${values.subnet}/${values.prefix}`;
+      
+      // First save to Supabase
+      const { data, error } = await supabase
+        .from('subnets')
+        .insert({
+          site_id: currentSiteId,
+          cidr: cidr,
+          description: values.name,
+          user_id: user.id
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      // Then update the local state
+      const newSubnet: Subnet = {
+        id: data.id,
+        name: values.name,
+        subnet: values.subnet,
+        prefix: values.prefix,
+        username: values.username,
+        password: values.password,
+        accessMethod: values.accessMethod,
+      };
+      
+      setSubnets((prev) => [...prev, newSubnet]);
+      setAddingSubnet(false);
+      subnetForm.reset();
+      
+      toast({
+        title: "Subnet added",
+        description: `Subnet ${values.name} has been added to your site.`,
+      });
+    } catch (error) {
+      console.error("Error saving subnet:", error);
+      toast({
+        title: "Error adding subnet",
+        description: "There was a problem saving your subnet information.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const removeSubnet = async (id: string) => {
+    if (!user) return;
+    
+    try {
+      const { error } = await supabase
+        .from('subnets')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+      
+      if (error) throw error;
+      
+      setSubnets((prev) => prev.filter((subnet) => subnet.id !== id));
+      toast({
+        title: "Subnet removed",
+        description: "The subnet has been removed from your site.",
+      });
+    } catch (error) {
+      console.error("Error removing subnet:", error);
+      toast({
+        title: "Error removing subnet",
+        description: "There was a problem removing the subnet.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleNext = () => {
@@ -123,8 +267,8 @@ const SiteSubnetPage = () => {
       return;
     }
     
-    // In a real app, this would save all data to an API
-    // For now, we'll just navigate to the next page
+    // Store the subnet IDs in session storage for the discovery page
+    sessionStorage.setItem('subnetIds', JSON.stringify(subnets.map(subnet => subnet.id)));
     navigate("/discovery");
   };
 

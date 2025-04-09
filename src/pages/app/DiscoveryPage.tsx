@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -24,6 +23,7 @@ const DiscoveryPage = () => {
     message: "Ready to begin network discovery",
     devices: 0,
   });
+  const [subnetsToScan, setSubnetsToScan] = useState<any[]>([]);
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -31,27 +31,67 @@ const DiscoveryPage = () => {
   // Fetch subnets data to check if there are any subnets to scan
   useEffect(() => {
     const fetchSubnets = async () => {
-      if (!user) return;
+      if (!user) {
+        toast({
+          title: "Authentication Required",
+          description: "You must be logged in to start discovery.",
+          variant: "destructive",
+        });
+        navigate('/login');
+        return;
+      }
       
-      const { data: subnets, error } = await supabase
-        .from('subnets')
-        .select('*');
-      
-      if (error) {
-        console.error('Error fetching subnets:', error);
+      try {
+        // Try to get subnet IDs from session storage (set by SiteSubnetPage)
+        const storedSubnetIds = sessionStorage.getItem('subnetIds');
+        let query = supabase.from('subnets').select('*');
+        
+        // If we have specific subnet IDs, filter by them
+        if (storedSubnetIds) {
+          const subnetIds = JSON.parse(storedSubnetIds);
+          query = query.in('id', subnetIds);
+        } else {
+          // Otherwise just get the user's subnets
+          query = query.eq('user_id', user.id);
+        }
+        
+        const { data: subnets, error } = await query;
+        
+        if (error) {
+          console.error('Error fetching subnets:', error);
+          toast({
+            title: "Error",
+            description: "Failed to load subnet information.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (!subnets || subnets.length === 0) {
+          toast({
+            title: "No Subnets Found",
+            description: "Please add at least one subnet before starting discovery.",
+            variant: "destructive",
+          });
+          navigate('/site-subnet');
+          return;
+        }
+
+        // Log the subnets for debugging
+        console.log('Subnets available for scanning:', subnets);
+        setSubnetsToScan(subnets);
+      } catch (error) {
+        console.error('Error in subnet fetching:', error);
         toast({
           title: "Error",
-          description: "Failed to load subnet information.",
+          description: "An unexpected error occurred while loading subnets.",
           variant: "destructive",
         });
       }
-
-      // Log the subnets for debugging
-      console.log('Subnets available for scanning:', subnets);
     };
 
     fetchSubnets();
-  }, [user, toast]);
+  }, [user, toast, navigate]);
 
   const startDiscovery = async () => {
     if (!user) {
@@ -60,24 +100,11 @@ const DiscoveryPage = () => {
         description: "You must be logged in to start discovery.",
         variant: "destructive",
       });
+      navigate('/login');
       return;
     }
 
-    // Check if we have any subnets to scan
-    const { data: subnets, error: subnetsError } = await supabase
-      .from('subnets')
-      .select('*');
-    
-    if (subnetsError) {
-      toast({
-        title: "Error",
-        description: "Failed to load subnet information.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!subnets || subnets.length === 0) {
+    if (!subnetsToScan || subnetsToScan.length === 0) {
       toast({
         title: "No Subnets",
         description: "Please add at least one subnet before starting discovery.",
@@ -100,7 +127,7 @@ const DiscoveryPage = () => {
       setDiscovery({
         status: "scanning",
         progress: 25,
-        message: `Found devices on ${subnets[0].cidr}, continuing scan...`,
+        message: `Found devices on ${subnetsToScan[0].cidr}, continuing scan...`,
         devices: 8,
       });
       
@@ -124,8 +151,8 @@ const DiscoveryPage = () => {
             // At this point, in a real implementation, we would insert the discovered
             // devices into the database
             const mockDevices = Array.from({ length: 12 }, (_, i) => ({
-              site_id: subnets[0].site_id,
-              subnet_id: subnets[0].id,
+              site_id: subnetsToScan[0].site_id,
+              subnet_id: subnetsToScan[0].id,
               ip_address: `192.168.1.${10 + i}`,
               hostname: `DEVICE-${i + 1}`,
               make: i % 2 === 0 ? 'Cisco' : 'Juniper',
@@ -135,40 +162,62 @@ const DiscoveryPage = () => {
               user_id: user.id
             }));
             
-            // Insert discovered devices into the database
-            const { error: insertError } = await supabase
-              .from('devices')
-              .upsert(mockDevices);
-            
-            if (insertError) {
-              console.error('Error inserting devices:', insertError);
+            try {
+              // Delete any existing devices for this subnet to avoid duplicates
+              const { error: deleteError } = await supabase
+                .from('devices')
+                .delete()
+                .eq('subnet_id', subnetsToScan[0].id)
+                .eq('user_id', user.id);
+                
+              if (deleteError) {
+                console.error('Error deleting existing devices:', deleteError);
+              }
+                
+              // Insert discovered devices into the database
+              const { error: insertError } = await supabase
+                .from('devices')
+                .insert(mockDevices);
+              
+              if (insertError) {
+                console.error('Error inserting devices:', insertError);
+                setDiscovery({
+                  status: "error",
+                  progress: 70,
+                  message: "Error saving device information",
+                  devices: 12,
+                  error: "Database error occurred while saving devices"
+                });
+                
+                toast({
+                  title: "Database Error",
+                  description: "Failed to save discovered devices.",
+                  variant: "destructive",
+                });
+                return;
+              }
+              
               setDiscovery({
-                status: "error",
-                progress: 70,
-                message: "Error saving device information",
-                devices: 12,
-                error: "Database error occurred while saving devices"
+                status: "complete",
+                progress: 100,
+                message: `Discovery complete! Found ${mockDevices.length} devices.`,
+                devices: mockDevices.length,
               });
               
               toast({
-                title: "Database Error",
-                description: "Failed to save discovered devices.",
-                variant: "destructive",
+                title: "Discovery complete",
+                description: `Successfully discovered ${mockDevices.length} network devices.`,
               });
-              return;
+            } catch (error) {
+              console.error('Error during device saving:', error);
+              setDiscovery({
+                status: "error",
+                progress: 70,
+                message: "Error during device discovery",
+                devices: 0,
+                error: "An unexpected error occurred"
+              });
             }
-            
-            setDiscovery({
-              status: "complete",
-              progress: 100,
-              message: `Discovery complete! Found ${mockDevices.length} devices.`,
-              devices: mockDevices.length,
-            });
-            
-            toast({
-              title: "Discovery complete",
-              description: `Successfully discovered ${mockDevices.length} network devices.`,
-            });
           }, 3000);
         }, 2500);
       }, 2000);
