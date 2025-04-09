@@ -7,8 +7,24 @@ export function parseCIDR(cidr: string) {
   return { baseIP, maskBits };
 }
 
+// Convert IP address to numeric value for subnet comparison
+function ipToLong(ip: string): number {
+  const parts = ip.split('.');
+  return (parseInt(parts[0]) << 24) | 
+         (parseInt(parts[1]) << 16) | 
+         (parseInt(parts[2]) << 8) | 
+         parseInt(parts[3]);
+}
+
+// Check if IP is in the same subnet
+function isInSameSubnet(ip1: string, ip2: string, maskBits: number): boolean {
+  const ip1Long = ipToLong(ip1);
+  const ip2Long = ipToLong(ip2);
+  const mask = ~((1 << (32 - maskBits)) - 1);
+  return (ip1Long & mask) === (ip2Long & mask);
+}
+
 // Expanded OUI prefixes for common network equipment manufacturers
-// More comprehensive database of OUI prefixes
 const OUI_DATABASE: Record<string, string> = {
   // Cisco prefixes
   "00:00:0C": "Cisco",
@@ -328,31 +344,8 @@ const OUI_DATABASE: Record<string, string> = {
   "E8:1C:BA": "Fortinet"
 };
 
-// Expanded device patterns - port and protocol patterns for device identification
-const DEVICE_PATTERNS: Record<string, { type: string, patterns: string[] }> = {
-  "Router": {
-    type: "Router",
-    patterns: ["23/tcp", "80/tcp", "443/tcp", "161/udp", "53/udp", "67/udp", "68/udp", "520/udp"]
-  },
-  "Switch": {
-    type: "Switch",
-    patterns: ["23/tcp", "22/tcp", "80/tcp", "443/tcp", "161/udp", "162/udp"]
-  },
-  "AP": {
-    type: "AP",
-    patterns: ["80/tcp", "443/tcp", "8080/tcp", "8443/tcp", "161/udp"]
-  },
-  "Firewall": {
-    type: "Firewall",
-    patterns: ["443/tcp", "8443/tcp", "161/udp", "500/udp", "4500/udp"]
-  },
-  "Server": {
-    type: "Server",
-    patterns: ["22/tcp", "80/tcp", "443/tcp", "3389/tcp", "5060/tcp"]
-  }
-};
-
-// Function to identify device manufacturer from MAC address
+// Accurately identify device manufacturer from MAC address
+// This should be called only when we've properly obtained a MAC address
 export function identifyDeviceFromMAC(macAddress: string): string | null {
   if (!macAddress) return null;
   
@@ -379,31 +372,77 @@ export function identifyDeviceFromMAC(macAddress: string): string | null {
   return null;
 }
 
-// Generate possible MAC address for an IP (simulation)
-// In a real implementation, this would use ARP tables or similar
-export function simulateARPLookup(ipAddress: string): string {
-  // Create a deterministic but random-looking MAC based on IP
-  // This is just for simulation purposes
-  const ipParts = ipAddress.split('.').map(part => parseInt(part));
-  const macParts: string[] = [];
+// Simulate ping and ARP lookup - in a real implementation this would use actual network calls
+// This has been modified to consider subnet boundaries
+export function simulatePingAndARPLookup(ipAddress: string, localIP: string, subnetMask: number): { 
+  reachable: boolean, 
+  macAddress: string | null,
+  isRouted: boolean 
+} {
+  // Determine if this would be a routed request
+  const isRouted = !isInSameSubnet(ipAddress, localIP, subnetMask);
   
-  // Use some popular OUIs for the first part to get realistic manufacturer identification
-  const popularOUIs = Object.keys(OUI_DATABASE);
-  const ipSum = ipParts.reduce((sum, part) => sum + part, 0);
-  const selectedOUI = popularOUIs[ipSum % popularOUIs.length].replace(/:/g, '');
+  // Simulate reachability - in reality this would be an actual ping
+  const isReachable = Math.random() > 0.3; // 70% chance the device is reachable
   
-  macParts.push(selectedOUI);
+  if (!isReachable) {
+    return { reachable: false, macAddress: null, isRouted };
+  }
   
-  // Generate the rest of the MAC address based on IP
+  // If traffic would be routed, we can't accurately determine the MAC
+  if (isRouted) {
+    console.log(`Routed traffic detected for ${ipAddress}. Cannot accurately determine MAC address.`);
+    return { reachable: true, macAddress: null, isRouted: true };
+  }
+  
+  // For non-routed traffic, we can simulate finding the actual MAC
+  // In reality, this would come from an ARP table lookup
+  const macBytes = [];
+  
+  // Create a deterministic but pseudo-random MAC based on IP just for simulation
+  // This is only for simulation - in reality we would use actual ARP data
+  const ipNum = ipToLong(ipAddress);
+  const seed = ipNum % 1000;
+  
+  // Pick a random OUI from our database based on the seed
+  const ouis = Object.keys(OUI_DATABASE);
+  const selectedOUI = ouis[seed % ouis.length].replace(/:/g, '');
+  
+  // Format the MAC address properly with the OUI prefix
   const lastThreeBytes = [
-    ((ipParts[1] * 7) % 256).toString(16).padStart(2, '0'),
-    ((ipParts[2] * 13) % 256).toString(16).padStart(2, '0'),
-    ((ipParts[3] * 17) % 256).toString(16).padStart(2, '0')
+    ((seed * 7) % 256).toString(16).padStart(2, '0'),
+    ((seed * 13) % 256).toString(16).padStart(2, '0'),
+    ((seed * 17) % 256).toString(16).padStart(2, '0')
   ];
   
   const fullMAC = `${selectedOUI.substring(0, 2)}:${selectedOUI.substring(2, 4)}:${selectedOUI.substring(4, 6)}:${lastThreeBytes[0]}:${lastThreeBytes[1]}:${lastThreeBytes[2]}`;
-  return fullMAC;
+  
+  return { reachable: true, macAddress: fullMAC, isRouted: false };
 }
+
+// Expanded device patterns - port and protocol patterns for device identification
+const DEVICE_PATTERNS: Record<string, { type: string, patterns: string[] }> = {
+  "Router": {
+    type: "Router",
+    patterns: ["23/tcp", "80/tcp", "443/tcp", "161/udp", "53/udp", "67/udp", "68/udp", "520/udp"]
+  },
+  "Switch": {
+    type: "Switch",
+    patterns: ["23/tcp", "22/tcp", "80/tcp", "443/tcp", "161/udp", "162/udp"]
+  },
+  "AP": {
+    type: "AP",
+    patterns: ["80/tcp", "443/tcp", "8080/tcp", "8443/tcp", "161/udp"]
+  },
+  "Firewall": {
+    type: "Firewall",
+    patterns: ["443/tcp", "8443/tcp", "161/udp", "500/udp", "4500/udp"]
+  },
+  "Server": {
+    type: "Server",
+    patterns: ["22/tcp", "80/tcp", "443/tcp", "3389/tcp", "5060/tcp"]
+  }
+};
 
 // Determine device type based on ports and protocols (simulated)
 export function determineDeviceType(ipAddress: string, make: string | null = null): string {
@@ -444,11 +483,12 @@ export function determineDeviceType(ipAddress: string, make: string | null = nul
 interface DiscoveredDevice {
   ip_address: string;
   hostname: string | null;
-  mac_address: string;
+  mac_address: string | null;
   make: string | null;
   model: string | null;
   category: string | null;
   status: string;
+  needs_verification: boolean;
 }
 
 // Function to discover devices in a subnet
@@ -459,24 +499,32 @@ export async function discoverDevicesInSubnet(
   const { baseIP, maskBits } = parseCIDR(cidr);
   const devices: DiscoveredDevice[] = [];
   
+  // Simulate local host IP - in reality this would be obtained from the system
+  const localHostIP = "192.168.1.100"; // Simulated local IP of the machine running the app
+  
   // If it's a /32, we're just checking a single IP
   if (maskBits === 32) {
     updateProgress(`Scanning ${baseIP}...`, 25);
-    const macAddress = simulateARPLookup(baseIP);
-    const make = identifyDeviceFromMAC(macAddress);
-    const category = determineDeviceType(baseIP, make);
     
-    updateProgress(`Device found at ${baseIP}`, 50);
+    const { reachable, macAddress, isRouted } = simulatePingAndARPLookup(baseIP, localHostIP, maskBits);
     
-    devices.push({
-      ip_address: baseIP,
-      hostname: `HOST-${baseIP.replace(/\./g, "-")}`,
-      mac_address: macAddress,
-      make,
-      model: make ? `${make}-${Math.floor(1000 + Math.random() * 9000)}` : null,
-      category,
-      status: "online"
-    });
+    if (reachable) {
+      const make = macAddress ? identifyDeviceFromMAC(macAddress) : null;
+      const category = determineDeviceType(baseIP, make);
+      
+      updateProgress(`Device found at ${baseIP}`, 50);
+      
+      devices.push({
+        ip_address: baseIP,
+        hostname: `HOST-${baseIP.replace(/\./g, "-")}`,
+        mac_address: macAddress,
+        make,
+        model: make ? `${make}-${Math.floor(1000 + Math.random() * 9000)}` : null,
+        category,
+        status: "online",
+        needs_verification: isRouted || !macAddress
+      });
+    }
     
     updateProgress(`Completed scan of ${baseIP}`, 100);
     return devices;
@@ -496,12 +544,11 @@ export async function discoverDevicesInSubnet(
     
     updateProgress(`Scanning ${ip} (${i+1}/${Math.min(ipCount, 10)})...`, Math.min(25 + (i * 75 / Math.min(ipCount, 10)), 95));
     
-    // Simulate a scan - in reality, this would be an actual network probe
-    const isReachable = Math.random() > 0.3; // 70% chance the device is reachable
+    // Simulate a network ping and ARP lookup
+    const { reachable, macAddress, isRouted } = simulatePingAndARPLookup(ip, localHostIP, maskBits);
     
-    if (isReachable) {
-      const macAddress = simulateARPLookup(ip);
-      const make = identifyDeviceFromMAC(macAddress);
+    if (reachable) {
+      const make = macAddress ? identifyDeviceFromMAC(macAddress) : null;
       const category = determineDeviceType(ip, make);
       
       devices.push({
@@ -511,7 +558,8 @@ export async function discoverDevicesInSubnet(
         make,
         model: make ? `${make}-${Math.floor(1000 + Math.random() * 9000)}` : null,
         category,
-        status: "online"
+        status: "online",
+        needs_verification: isRouted || !macAddress
       });
     }
   }
@@ -537,7 +585,8 @@ export async function saveDiscoveredDevices(
     model: device.model,
     category: device.category,
     status: device.status,
-    mac_address: device.mac_address
+    mac_address: device.mac_address,
+    needs_verification: device.needs_verification
   }));
   
   const { error } = await supabase

@@ -4,7 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
-import { ScanSearchIcon, AlertTriangleIcon, WifiIcon, ServerIcon } from "lucide-react";
+import { 
+  ScanSearchIcon, 
+  AlertTriangleIcon, 
+  WifiIcon, 
+  ServerIcon,
+  AlertCircleIcon
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { discoverDevicesInSubnet, saveDiscoveredDevices } from "@/utils/networkDiscovery";
@@ -14,6 +20,7 @@ interface DiscoveryStatus {
   progress: number;
   message: string;
   devices: number;
+  devicesNeedingVerification: number;
   error?: string;
 }
 
@@ -23,6 +30,7 @@ const DiscoveryPage = () => {
     progress: 0,
     message: "Ready to begin network discovery",
     devices: 0,
+    devicesNeedingVerification: 0
   });
   const [subnetsToScan, setSubnetsToScan] = useState<any[]>([]);
   const [currentSubnetIndex, setCurrentSubnetIndex] = useState(0);
@@ -30,7 +38,6 @@ const DiscoveryPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Fetch subnets data to check if there are any subnets to scan
   useEffect(() => {
     const fetchSubnets = async () => {
       if (!user) {
@@ -44,16 +51,13 @@ const DiscoveryPage = () => {
       }
       
       try {
-        // Try to get subnet IDs from session storage (set by SiteSubnetPage)
         const storedSubnetIds = sessionStorage.getItem('subnetIds');
         let query = supabase.from('subnets').select('*');
         
-        // If we have specific subnet IDs, filter by them
         if (storedSubnetIds) {
           const subnetIds = JSON.parse(storedSubnetIds);
           query = query.in('id', subnetIds);
         } else {
-          // Otherwise just get the user's subnets
           query = query.eq('user_id', user.id);
         }
         
@@ -79,7 +83,6 @@ const DiscoveryPage = () => {
           return;
         }
 
-        // Log the subnets for debugging
         console.log('Subnets available for scanning:', subnets);
         setSubnetsToScan(subnets);
       } catch (error) {
@@ -99,7 +102,7 @@ const DiscoveryPage = () => {
     setDiscovery(prev => ({
       ...prev,
       message,
-      progress: Math.min(prev.progress + (progress * 0.7 / 100), 70), // Cap at 70% for discovery, rest is for saving
+      progress: Math.min(prev.progress + (progress * 0.7 / 100), 70),
     }));
   };
 
@@ -130,12 +133,11 @@ const DiscoveryPage = () => {
         progress: 5,
         message: "Starting network scan...",
         devices: 0,
+        devicesNeedingVerification: 0
       });
       
-      // We'll start with just the first subnet for simplicity
       const subnetToScan = subnetsToScan[currentSubnetIndex];
       
-      // Clean up existing devices for this subnet
       const { error: deleteError } = await supabase
         .from('devices')
         .delete()
@@ -151,27 +153,28 @@ const DiscoveryPage = () => {
         });
       }
       
-      // Discover devices in the subnet
       setDiscovery(prev => ({
         ...prev,
         status: "scanning",
-        message: `Scanning subnet ${subnetToScan.cidr}...`,
+        message: `Scanning subnet ${subnetsToScan[currentSubnetIndex].cidr}...`,
       }));
       
       const discoveredDevices = await discoverDevicesInSubnet(
-        subnetToScan.cidr,
+        subnetsToScan[currentSubnetIndex].cidr,
         updateDiscoveryProgress
       );
+      
+      const devicesNeedingVerification = discoveredDevices.filter(device => device.needs_verification).length;
       
       setDiscovery(prev => ({
         ...prev,
         status: "gathering",
-        message: `Found ${discoveredDevices.length} devices on ${subnetToScan.cidr}. Gathering information...`,
+        message: `Found ${discoveredDevices.length} devices on ${subnetsToScan[currentSubnetIndex].cidr}. Gathering information...`,
         devices: discoveredDevices.length,
+        devicesNeedingVerification,
         progress: 70
       }));
       
-      // Save discovered devices to the database
       setDiscovery(prev => ({
         ...prev,
         status: "connecting",
@@ -181,8 +184,8 @@ const DiscoveryPage = () => {
       
       const { error: saveError } = await saveDiscoveredDevices(
         discoveredDevices,
-        subnetToScan.site_id,
-        subnetToScan.id,
+        subnetsToScan[currentSubnetIndex].site_id,
+        subnetsToScan[currentSubnetIndex].id,
         user.id
       );
       
@@ -195,11 +198,16 @@ const DiscoveryPage = () => {
         progress: 100,
         message: `Discovery complete! Found ${discoveredDevices.length} device(s).`,
         devices: discoveredDevices.length,
+        devicesNeedingVerification
       });
       
+      const toastMessage = devicesNeedingVerification > 0 
+        ? `Successfully discovered ${discoveredDevices.length} device(s). ${devicesNeedingVerification} need manual verification.`
+        : `Successfully discovered ${discoveredDevices.length} network device(s).`;
+        
       toast({
         title: "Discovery complete",
-        description: `Successfully discovered ${discoveredDevices.length} network device(s).`,
+        description: toastMessage,
       });
       
     } catch (error) {
@@ -209,6 +217,7 @@ const DiscoveryPage = () => {
         progress: discovery.progress,
         message: "Error during device discovery",
         devices: discovery.devices,
+        devicesNeedingVerification: discovery.devicesNeedingVerification || 0,
         error: error instanceof Error ? error.message : "An unexpected error occurred"
       });
       
@@ -297,6 +306,7 @@ const DiscoveryPage = () => {
                       progress: 0,
                       message: "Ready to begin network discovery",
                       devices: 0,
+                      devicesNeedingVerification: 0
                     })}
                   >
                     Retry
@@ -323,6 +333,21 @@ const DiscoveryPage = () => {
                 <p className="mt-2 text-2xl font-bold">
                   {subnetsToScan?.length ? `${currentSubnetIndex + 1}/${subnetsToScan.length}` : "0/0"}
                 </p>
+              </div>
+            </div>
+          )}
+          
+          {discovery.status === "complete" && discovery.devicesNeedingVerification > 0 && (
+            <div className="mt-4 rounded-md bg-amber-50 border border-amber-200 p-4">
+              <div className="flex items-start">
+                <AlertCircleIcon className="h-5 w-5 text-amber-500 mr-2 mt-0.5" />
+                <div>
+                  <h4 className="font-medium text-amber-700">Verification Required</h4>
+                  <p className="text-sm text-amber-600">
+                    {discovery.devicesNeedingVerification} device(s) require manual verification. 
+                    This occurs when devices are in different subnets from your host, making MAC address detection impossible.
+                  </p>
+                </div>
               </div>
             </div>
           )}
