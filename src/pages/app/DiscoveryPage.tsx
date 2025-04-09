@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -121,14 +122,18 @@ const DiscoveryPage = () => {
       devices: 0,
     });
 
-    // Simulate discovery process - in a real implementation, this would make API calls 
-    // to a backend service that performs the actual network scanning
+    // Generate realistic device count based on subnet size
+    // For /32 (single IP), we'll find 1 device
+    // For other netmasks, we'll generate a more realistic number based on subnet size
+    const deviceCount = generateDeviceCountFromSubnet(subnetsToScan[0].cidr);
+    
+    // Simulate discovery process with more realistic timing
     setTimeout(() => {
       setDiscovery({
         status: "scanning",
         progress: 25,
-        message: `Found devices on ${subnetsToScan[0].cidr}, continuing scan...`,
-        devices: 8,
+        message: `Found ${deviceCount} device(s) on ${subnetsToScan[0].cidr}, continuing scan...`,
+        devices: deviceCount,
       });
       
       setTimeout(() => {
@@ -136,7 +141,7 @@ const DiscoveryPage = () => {
           status: "connecting",
           progress: 40,
           message: "Connecting to discovered devices...",
-          devices: 12,
+          devices: deviceCount,
         });
         
         setTimeout(() => {
@@ -144,24 +149,10 @@ const DiscoveryPage = () => {
             status: "gathering",
             progress: 70,
             message: "Gathering device information...",
-            devices: 12,
+            devices: deviceCount,
           });
           
           setTimeout(async () => {
-            // At this point, in a real implementation, we would insert the discovered
-            // devices into the database
-            const mockDevices = Array.from({ length: 12 }, (_, i) => ({
-              site_id: subnetsToScan[0].site_id,
-              subnet_id: subnetsToScan[0].id,
-              ip_address: `192.168.1.${10 + i}`,
-              hostname: `DEVICE-${i + 1}`,
-              make: i % 2 === 0 ? 'Cisco' : 'Juniper',
-              model: `Model-${i + 1}`,
-              category: i % 3 === 0 ? 'Switch' : i % 3 === 1 ? 'Router' : 'AP',
-              status: 'online',
-              user_id: user.id
-            }));
-            
             try {
               // Delete any existing devices for this subnet to avoid duplicates
               const { error: deleteError } = await supabase
@@ -173,6 +164,15 @@ const DiscoveryPage = () => {
               if (deleteError) {
                 console.error('Error deleting existing devices:', deleteError);
               }
+              
+              // Generate more realistic mock devices based on the subnet
+              const mockDevices = generateMockDevicesFromSubnet(
+                subnetsToScan[0].cidr,
+                subnetsToScan[0].site_id,
+                subnetsToScan[0].id,
+                user.id,
+                deviceCount
+              );
                 
               // Insert discovered devices into the database
               const { error: insertError } = await supabase
@@ -185,7 +185,7 @@ const DiscoveryPage = () => {
                   status: "error",
                   progress: 70,
                   message: "Error saving device information",
-                  devices: 12,
+                  devices: deviceCount,
                   error: "Database error occurred while saving devices"
                 });
                 
@@ -200,13 +200,13 @@ const DiscoveryPage = () => {
               setDiscovery({
                 status: "complete",
                 progress: 100,
-                message: `Discovery complete! Found ${mockDevices.length} devices.`,
-                devices: mockDevices.length,
+                message: `Discovery complete! Found ${deviceCount} device(s).`,
+                devices: deviceCount,
               });
               
               toast({
                 title: "Discovery complete",
-                description: `Successfully discovered ${mockDevices.length} network devices.`,
+                description: `Successfully discovered ${deviceCount} network device(s).`,
               });
             } catch (error) {
               console.error('Error during device saving:', error);
@@ -222,6 +222,68 @@ const DiscoveryPage = () => {
         }, 2500);
       }, 2000);
     }, 1500);
+  };
+
+  // Helper function to generate device count based on subnet CIDR
+  const generateDeviceCountFromSubnet = (cidr: string): number => {
+    if (cidr.includes('/32')) {
+      // For a single IP address (/32), return 1 device
+      return 1;
+    }
+    
+    // Extract the subnet mask
+    const maskBits = parseInt(cidr.split('/')[1]);
+    
+    if (maskBits >= 30) {
+      // Small subnet, few devices
+      return Math.floor(Math.random() * 3) + 1;
+    } else if (maskBits >= 24) {
+      // Medium subnet, moderate devices
+      return Math.floor(Math.random() * 8) + 3;
+    } else {
+      // Large subnet, many devices
+      return Math.floor(Math.random() * 15) + 5;
+    }
+  };
+  
+  // Helper function to generate mock devices from a subnet
+  const generateMockDevicesFromSubnet = (
+    cidr: string, 
+    siteId: string, 
+    subnetId: string, 
+    userId: string,
+    count: number
+  ) => {
+    const baseIp = cidr.split('/')[0];
+    const ipParts = baseIp.split('.');
+    
+    return Array.from({ length: count }, (_, i) => {
+      let deviceIp = baseIp;
+      
+      // If not a /32, generate sequential IPs within the subnet
+      if (!cidr.includes('/32') && i > 0) {
+        const lastOctet = parseInt(ipParts[3]) + i;
+        deviceIp = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}.${lastOctet}`;
+      }
+      
+      const deviceTypes = ['Switch', 'Router', 'AP'];
+      const makeOptions = ['Cisco', 'Juniper', 'Aruba', 'HPE'];
+      
+      const randomType = deviceTypes[Math.floor(Math.random() * deviceTypes.length)];
+      const randomMake = makeOptions[Math.floor(Math.random() * makeOptions.length)];
+      
+      return {
+        site_id: siteId,
+        subnet_id: subnetId,
+        ip_address: deviceIp,
+        hostname: `DEVICE-${deviceIp.split('.').join('-')}`,
+        make: randomMake,
+        model: `Model-${Math.floor(Math.random() * 1000) + 1}`,
+        category: randomType,
+        status: 'online',
+        user_id: userId
+      };
+    });
   };
 
   const simulateError = () => {
@@ -325,7 +387,7 @@ const DiscoveryPage = () => {
                   <h3 className="font-medium">Subnets Scanned</h3>
                 </div>
                 <p className="mt-2 text-2xl font-bold">
-                  {discovery.progress < 30 ? "1/1" : "1/1"}
+                  {subnetsToScan?.length ? `1/${subnetsToScan.length}` : "0/0"}
                 </p>
               </div>
             </div>
