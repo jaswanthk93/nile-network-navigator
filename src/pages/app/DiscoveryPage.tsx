@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -8,6 +7,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { ScanSearchIcon, AlertTriangleIcon, WifiIcon, ServerIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { discoverDevicesInSubnet, saveDiscoveredDevices } from "@/utils/networkDiscovery";
 
 interface DiscoveryStatus {
   status: "idle" | "scanning" | "connecting" | "gathering" | "complete" | "error";
@@ -25,6 +25,7 @@ const DiscoveryPage = () => {
     devices: 0,
   });
   const [subnetsToScan, setSubnetsToScan] = useState<any[]>([]);
+  const [currentSubnetIndex, setCurrentSubnetIndex] = useState(0);
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -93,6 +94,14 @@ const DiscoveryPage = () => {
 
     fetchSubnets();
   }, [user, toast, navigate]);
+  
+  const updateDiscoveryProgress = (message: string, progress: number) => {
+    setDiscovery(prev => ({
+      ...prev,
+      message,
+      progress: Math.min(prev.progress + (progress * 0.7 / 100), 70), // Cap at 70% for discovery, rest is for saving
+    }));
+  };
 
   const startDiscovery = async () => {
     if (!user) {
@@ -115,175 +124,100 @@ const DiscoveryPage = () => {
       return;
     }
 
-    setDiscovery({
-      status: "scanning",
-      progress: 5,
-      message: "Scanning subnets for devices...",
-      devices: 0,
-    });
-
-    // Generate realistic device count based on subnet size
-    // For /32 (single IP), we'll find 1 device
-    // For other netmasks, we'll generate a more realistic number based on subnet size
-    const deviceCount = generateDeviceCountFromSubnet(subnetsToScan[0].cidr);
-    
-    // Simulate discovery process with more realistic timing
-    setTimeout(() => {
+    try {
       setDiscovery({
         status: "scanning",
-        progress: 25,
-        message: `Found ${deviceCount} device(s) on ${subnetsToScan[0].cidr}, continuing scan...`,
-        devices: deviceCount,
+        progress: 5,
+        message: "Starting network scan...",
+        devices: 0,
       });
       
-      setTimeout(() => {
-        setDiscovery({
-          status: "connecting",
-          progress: 40,
-          message: "Connecting to discovered devices...",
-          devices: deviceCount,
-        });
-        
-        setTimeout(() => {
-          setDiscovery({
-            status: "gathering",
-            progress: 70,
-            message: "Gathering device information...",
-            devices: deviceCount,
-          });
-          
-          setTimeout(async () => {
-            try {
-              // Delete any existing devices for this subnet to avoid duplicates
-              const { error: deleteError } = await supabase
-                .from('devices')
-                .delete()
-                .eq('subnet_id', subnetsToScan[0].id)
-                .eq('user_id', user.id);
-                
-              if (deleteError) {
-                console.error('Error deleting existing devices:', deleteError);
-              }
-              
-              // Generate more realistic mock devices based on the subnet
-              const mockDevices = generateMockDevicesFromSubnet(
-                subnetsToScan[0].cidr,
-                subnetsToScan[0].site_id,
-                subnetsToScan[0].id,
-                user.id,
-                deviceCount
-              );
-                
-              // Insert discovered devices into the database
-              const { error: insertError } = await supabase
-                .from('devices')
-                .insert(mockDevices);
-              
-              if (insertError) {
-                console.error('Error inserting devices:', insertError);
-                setDiscovery({
-                  status: "error",
-                  progress: 70,
-                  message: "Error saving device information",
-                  devices: deviceCount,
-                  error: "Database error occurred while saving devices"
-                });
-                
-                toast({
-                  title: "Database Error",
-                  description: "Failed to save discovered devices.",
-                  variant: "destructive",
-                });
-                return;
-              }
-              
-              setDiscovery({
-                status: "complete",
-                progress: 100,
-                message: `Discovery complete! Found ${deviceCount} device(s).`,
-                devices: deviceCount,
-              });
-              
-              toast({
-                title: "Discovery complete",
-                description: `Successfully discovered ${deviceCount} network device(s).`,
-              });
-            } catch (error) {
-              console.error('Error during device saving:', error);
-              setDiscovery({
-                status: "error",
-                progress: 70,
-                message: "Error during device discovery",
-                devices: 0,
-                error: "An unexpected error occurred"
-              });
-            }
-          }, 3000);
-        }, 2500);
-      }, 2000);
-    }, 1500);
-  };
-
-  // Helper function to generate device count based on subnet CIDR
-  const generateDeviceCountFromSubnet = (cidr: string): number => {
-    if (cidr.includes('/32')) {
-      // For a single IP address (/32), return 1 device
-      return 1;
-    }
-    
-    // Extract the subnet mask
-    const maskBits = parseInt(cidr.split('/')[1]);
-    
-    if (maskBits >= 30) {
-      // Small subnet, few devices
-      return Math.floor(Math.random() * 3) + 1;
-    } else if (maskBits >= 24) {
-      // Medium subnet, moderate devices
-      return Math.floor(Math.random() * 8) + 3;
-    } else {
-      // Large subnet, many devices
-      return Math.floor(Math.random() * 15) + 5;
-    }
-  };
-  
-  // Helper function to generate mock devices from a subnet
-  const generateMockDevicesFromSubnet = (
-    cidr: string, 
-    siteId: string, 
-    subnetId: string, 
-    userId: string,
-    count: number
-  ) => {
-    const baseIp = cidr.split('/')[0];
-    const ipParts = baseIp.split('.');
-    
-    return Array.from({ length: count }, (_, i) => {
-      let deviceIp = baseIp;
+      // We'll start with just the first subnet for simplicity
+      const subnetToScan = subnetsToScan[currentSubnetIndex];
       
-      // If not a /32, generate sequential IPs within the subnet
-      if (!cidr.includes('/32') && i > 0) {
-        const lastOctet = parseInt(ipParts[3]) + i;
-        deviceIp = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}.${lastOctet}`;
+      // Clean up existing devices for this subnet
+      const { error: deleteError } = await supabase
+        .from('devices')
+        .delete()
+        .eq('subnet_id', subnetToScan.id)
+        .eq('user_id', user.id);
+        
+      if (deleteError) {
+        console.error('Error deleting existing devices:', deleteError);
+        toast({
+          title: "Database Error",
+          description: "Failed to clean up existing device records.",
+          variant: "destructive",
+        });
       }
       
-      const deviceTypes = ['Switch', 'Router', 'AP'];
-      const makeOptions = ['Cisco', 'Juniper', 'Aruba', 'HPE'];
+      // Discover devices in the subnet
+      setDiscovery(prev => ({
+        ...prev,
+        status: "scanning",
+        message: `Scanning subnet ${subnetToScan.cidr}...`,
+      }));
       
-      const randomType = deviceTypes[Math.floor(Math.random() * deviceTypes.length)];
-      const randomMake = makeOptions[Math.floor(Math.random() * makeOptions.length)];
+      const discoveredDevices = await discoverDevicesInSubnet(
+        subnetToScan.cidr,
+        updateDiscoveryProgress
+      );
       
-      return {
-        site_id: siteId,
-        subnet_id: subnetId,
-        ip_address: deviceIp,
-        hostname: `DEVICE-${deviceIp.split('.').join('-')}`,
-        make: randomMake,
-        model: `Model-${Math.floor(Math.random() * 1000) + 1}`,
-        category: randomType,
-        status: 'online',
-        user_id: userId
-      };
-    });
+      setDiscovery(prev => ({
+        ...prev,
+        status: "gathering",
+        message: `Found ${discoveredDevices.length} devices on ${subnetToScan.cidr}. Gathering information...`,
+        devices: discoveredDevices.length,
+        progress: 70
+      }));
+      
+      // Save discovered devices to the database
+      setDiscovery(prev => ({
+        ...prev,
+        status: "connecting",
+        message: "Saving device information to database...",
+        progress: 80
+      }));
+      
+      const { error: saveError } = await saveDiscoveredDevices(
+        discoveredDevices,
+        subnetToScan.site_id,
+        subnetToScan.id,
+        user.id
+      );
+      
+      if (saveError) {
+        throw new Error(`Error saving devices: ${saveError.message}`);
+      }
+      
+      setDiscovery({
+        status: "complete",
+        progress: 100,
+        message: `Discovery complete! Found ${discoveredDevices.length} device(s).`,
+        devices: discoveredDevices.length,
+      });
+      
+      toast({
+        title: "Discovery complete",
+        description: `Successfully discovered ${discoveredDevices.length} network device(s).`,
+      });
+      
+    } catch (error) {
+      console.error('Error during discovery:', error);
+      setDiscovery({
+        status: "error",
+        progress: discovery.progress,
+        message: "Error during device discovery",
+        devices: discovery.devices,
+        error: error instanceof Error ? error.message : "An unexpected error occurred"
+      });
+      
+      toast({
+        title: "Discovery Error",
+        description: error instanceof Error ? error.message : "An unexpected error occurred during discovery.",
+        variant: "destructive",
+      });
+    }
   };
 
   const simulateError = () => {
@@ -299,7 +233,7 @@ const DiscoveryPage = () => {
         status: "error",
         progress: 15,
         message: "Error during discovery",
-        devices: 3,
+        devices: 0,
         error: "Connection timeout on subnet"
       });
       
@@ -387,7 +321,7 @@ const DiscoveryPage = () => {
                   <h3 className="font-medium">Subnets Scanned</h3>
                 </div>
                 <p className="mt-2 text-2xl font-bold">
-                  {subnetsToScan?.length ? `1/${subnetsToScan.length}` : "0/0"}
+                  {subnetsToScan?.length ? `${currentSubnetIndex + 1}/${subnetsToScan.length}` : "0/0"}
                 </p>
               </div>
             </div>
