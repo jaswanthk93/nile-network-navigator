@@ -1,6 +1,5 @@
+
 import { supabase } from "@/integrations/supabase/client";
-import { NodeSSH } from 'node-ssh';
-import { Telnet } from 'telnet-client';
 
 // Interface for switch connection details
 export interface SwitchConnectionDetails {
@@ -159,59 +158,8 @@ function parseVlanOutput(output: string, make: string): DiscoveredVlan[] {
 }
 
 /**
- * Connect to a switch and execute commands using SSH
- */
-async function connectViaSSH(connectionDetails: SwitchConnectionDetails): Promise<NodeSSH | null> {
-  try {
-    console.log(`Connecting to ${connectionDetails.ip} via SSH...`);
-    
-    const ssh = new NodeSSH();
-    
-    await ssh.connect({
-      host: connectionDetails.ip,
-      username: connectionDetails.username,
-      password: connectionDetails.password,
-      // For production, add proper error handling, timeouts, etc.
-    });
-    
-    console.log(`SSH connection to ${connectionDetails.ip} successful`);
-    return ssh;
-  } catch (error) {
-    console.error("SSH connection error:", error);
-    return null;
-  }
-}
-
-/**
- * Connect to a switch and execute commands using Telnet
- */
-async function connectViaTelnet(connectionDetails: SwitchConnectionDetails): Promise<Telnet | null> {
-  try {
-    console.log(`Connecting to ${connectionDetails.ip} via Telnet...`);
-    
-    const connection = new Telnet();
-    
-    await connection.connect({
-      host: connectionDetails.ip,
-      port: 23,
-      negotiationMandatory: false,
-      timeout: 10000,
-    });
-    
-    // Handle login
-    await connection.send(connectionDetails.username);
-    await connection.send(connectionDetails.password);
-    
-    console.log(`Telnet connection to ${connectionDetails.ip} successful`);
-    return connection;
-  } catch (error) {
-    console.error("Telnet connection error:", error);
-    return null;
-  }
-}
-
-/**
  * Connect to a switch using the appropriate method (SSH or Telnet)
+ * In browser environment, this is simulated
  */
 export async function connectToSwitch(connectionDetails: SwitchConnectionDetails): Promise<string | null> {
   try {
@@ -219,16 +167,13 @@ export async function connectToSwitch(connectionDetails: SwitchConnectionDetails
       throw new Error("Username and password are required to connect to network devices");
     }
     
-    // Connect based on the specified method
-    if (connectionDetails.method === "ssh") {
-      const sshConnection = await connectViaSSH(connectionDetails);
-      return sshConnection ? "Connected successfully via SSH" : null;
-    } else if (connectionDetails.method === "telnet") {
-      const telnetConnection = await connectViaTelnet(connectionDetails);
-      return telnetConnection ? "Connected successfully via Telnet" : null;
-    } else {
-      throw new Error(`Unsupported connection method: ${connectionDetails.method}`);
-    }
+    console.log(`[SIMULATED] Connecting to ${connectionDetails.ip} via ${connectionDetails.method}...`);
+    
+    // In a browser environment, we can't actually establish SSH/Telnet connections
+    // So we simulate a successful connection after a short delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    return `Connected successfully via ${connectionDetails.method.toUpperCase()} (Simulated)`;
   } catch (error) {
     console.error("Error connecting to switch:", error);
     return null;
@@ -237,53 +182,76 @@ export async function connectToSwitch(connectionDetails: SwitchConnectionDetails
 
 /**
  * Execute commands on a connected switch
+ * In browser environment, this returns simulated data
  */
 export async function executeCommands(
   connectionDetails: SwitchConnectionDetails, 
   commands: string[]
 ): Promise<string | null> {
   try {
-    console.log(`Executing commands on ${connectionDetails.ip}...`);
+    console.log(`[SIMULATED] Executing commands on ${connectionDetails.ip}...`);
     console.log("Commands:", commands);
     
-    let output = "";
+    // In a browser environment, we can't actually execute commands on network devices
+    // So we simulate responses based on the commands and device make
+    await new Promise(resolve => setTimeout(resolve, 1500));
     
-    if (connectionDetails.method === "ssh") {
-      const ssh = await connectViaSSH(connectionDetails);
-      if (!ssh) {
-        throw new Error(`Failed to establish SSH connection to ${connectionDetails.ip}`);
-      }
-      
-      // Execute each command and collect output
-      for (const command of commands) {
-        const result = await ssh.execCommand(command);
-        if (result.stderr) {
-          console.warn(`Warning executing command (${command}):`, result.stderr);
-        }
-        output += result.stdout + "\n";
-      }
-      
-      // Close the connection
-      ssh.dispose();
-    } else if (connectionDetails.method === "telnet") {
-      const telnet = await connectViaTelnet(connectionDetails);
-      if (!telnet) {
-        throw new Error(`Failed to establish Telnet connection to ${connectionDetails.ip}`);
-      }
-      
-      // Execute each command and collect output
-      for (const command of commands) {
-        const result = await telnet.send(command);
-        output += result + "\n";
-      }
-      
-      // Close the connection
-      telnet.end();
+    // Generate mock output based on device make
+    let mockOutput = "";
+    const make = connectionDetails.make?.toLowerCase() || "unknown";
+    
+    if (make.includes("cisco") && commands.some(cmd => cmd.includes("show vlan"))) {
+      mockOutput = `
+VLAN Name                             Status    Ports
+---- -------------------------------- --------- -------------------------------
+1    default                          active    Gi0/1, Gi0/2
+10   Management                       active    Gi0/3, Gi0/4
+20   Voice                            active    Gi0/5, Gi0/6
+30   Guest                            active    Gi0/7, Gi0/8
+40   Security                         active    Gi0/9, Gi0/10
+      `;
+    } else if (make.includes("juniper") && commands.some(cmd => cmd.includes("show vlans"))) {
+      mockOutput = `
+Routing instance: default-switch
+VLAN: Management
+  Tag: 10
+  Interfaces: xe-0/0/1.0, xe-0/0/2.0
+
+VLAN: Voice
+  Tag: 20
+  Interfaces: xe-0/0/3.0, xe-0/0/4.0
+
+VLAN: Guest
+  Tag: 30
+  Interfaces: xe-0/0/5.0, xe-0/0/6.0
+      `;
+    } else if ((make.includes("hp") || make.includes("aruba")) && commands.some(cmd => cmd.includes("show vlan"))) {
+      mockOutput = `
+ Status and Counters - VLAN Information
+
+  Maximum VLANs to support : 256
+  Primary VLAN : DEFAULT_VLAN
+  Management VLAN :
+
+  VLAN ID Name                 Status     Voice Jumbo
+  ------- -------------------- ---------- ----- -----
+  1       DEFAULT_VLAN         Port-based No    No
+  10      MANAGEMENT           Port-based No    No
+  20      VOICE               Port-based Yes   No
+  30      GUEST                Port-based No    No
+      `;
     } else {
-      throw new Error(`Unsupported connection method: ${connectionDetails.method}`);
+      mockOutput = `
+VLAN ID  Name
+-------  ----------------
+1        Default
+10       VLAN0010
+20       VLAN0020
+30       VLAN0030
+      `;
     }
     
-    return output;
+    return mockOutput;
   } catch (error) {
     console.error("Error executing commands:", error);
     return null;
@@ -292,6 +260,7 @@ export async function executeCommands(
 
 /**
  * Retrieve VLAN information from a network switch
+ * In browser environment, this returns simulated data
  */
 export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDetails): Promise<DiscoveredVlan[]> {
   try {
@@ -331,6 +300,7 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
 
 /**
  * Discover VLANs from multiple network switches
+ * In browser environment, this uses simulated data
  */
 export async function discoverVlans(
   devices: any[], 
@@ -384,7 +354,6 @@ export async function discoverVlans(
       const deviceIpParts = switchDevice.ip_address.split('.');
       
       // Basic check - just compare first three octets for a /24
-      // In a real implementation, you'd check subnet membership properly
       return (
         ipParts[0] === deviceIpParts[0] && 
         ipParts[1] === deviceIpParts[1] && 
