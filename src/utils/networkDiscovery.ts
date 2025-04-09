@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 
 // Helper function to parse CIDR notation and get IP information
@@ -382,14 +383,15 @@ export function simulatePingAndARPLookup(ipAddress: string, localIP: string, sub
   // Determine if this would be a routed request
   const isRouted = !isInSameSubnet(ipAddress, localIP, subnetMask);
   
-  // Simulate reachability - in reality this would be an actual ping
-  const isReachable = Math.random() > 0.3; // 70% chance the device is reachable
+  // IMPORTANT FIX: In our simulation, always consider the device reachable
+  // In a real implementation, this would be the result of an actual ping
+  const isReachable = true; // Changed from random to always true
   
   if (!isReachable) {
     return { reachable: false, macAddress: null, isRouted };
   }
   
-  // If traffic would be routed, we can't accurately determine the MAC
+  // If traffic would be routed, we can't accurately determine the MAC but the device is still discoverable
   if (isRouted) {
     console.log(`Routed traffic detected for ${ipAddress}. Cannot accurately determine MAC address.`);
     return { reachable: true, macAddress: null, isRouted: true };
@@ -488,7 +490,7 @@ interface DiscoveredDevice {
   model: string | null;
   category: string | null;
   status: string;
-  needs_verification?: boolean; // Changed from required to optional
+  needs_verification?: boolean; // Optional property
 }
 
 // Function to discover devices in a subnet
@@ -516,7 +518,7 @@ export async function discoverDevicesInSubnet(
       
       devices.push({
         ip_address: baseIP,
-        hostname: `HOST-${baseIP.replace(/\./g, "-")}`,
+        hostname: macAddress ? `HOST-${baseIP.replace(/\./g, "-")}` : null,
         mac_address: macAddress,
         make,
         model: make ? `${make}-${Math.floor(1000 + Math.random() * 9000)}` : null,

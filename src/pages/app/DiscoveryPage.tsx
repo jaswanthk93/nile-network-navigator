@@ -184,8 +184,13 @@ const DiscoveryPage = () => {
         progress: 80
       }));
       
+      const devicesToSave = discoveredDevices.map(device => {
+        const { needs_verification, ...deviceData } = device;
+        return deviceData;
+      });
+      
       const { error: saveError } = await saveDiscoveredDevices(
-        discoveredDevices,
+        devicesToSave,
         subnetsToScan[currentSubnetIndex].site_id,
         subnetsToScan[currentSubnetIndex].id,
         user.id
@@ -204,7 +209,7 @@ const DiscoveryPage = () => {
       });
       
       const toastMessage = devicesNeedingVerification > 0 
-        ? `Successfully discovered ${discoveredDevices.length} device(s). ${devicesNeedingVerification} need manual verification.`
+        ? `Successfully discovered ${discoveredDevices.length} device(s). ${devicesNeedingVerification} need additional information.`
         : `Successfully discovered ${discoveredDevices.length} network device(s).`;
         
       toast({
@@ -346,9 +351,9 @@ const DiscoveryPage = () => {
               <div className="flex items-start">
                 <AlertCircleIcon className="h-5 w-5 text-amber-500 mr-2 mt-0.5" />
                 <div>
-                  <h4 className="font-medium text-amber-700">Verification Required</h4>
+                  <h4 className="font-medium text-amber-700">Additional Information Needed</h4>
                   <p className="text-sm text-amber-600">
-                    {discovery.devicesNeedingVerification} device(s) require manual verification. 
+                    {discovery.devicesNeedingVerification} device(s) were discovered but have limited information. 
                     This occurs when devices are in different subnets from your host, making MAC address detection impossible.
                   </p>
                 </div>
