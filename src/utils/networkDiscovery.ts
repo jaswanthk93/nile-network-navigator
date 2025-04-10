@@ -12,6 +12,8 @@ export * from './network/discovery';
 export * from './network/ipUtils';
 export * from './network/deviceIdentification';
 export * from './network/subnets';
+export * from './network/snmpDiscovery';
+export * from './network/scanStrategies';
 
 // Re-export the main functionality from the discovery module
 import { discoverDevicesInSubnet } from './network/discovery';
