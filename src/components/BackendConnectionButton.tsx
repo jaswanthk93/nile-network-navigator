@@ -55,10 +55,8 @@ export function BackendConnectionButton() {
 
   // Handler to prevent dialog from closing when clicking inside the log viewer
   const handleDialogContentClick = (e: React.MouseEvent) => {
-    // Only stop propagation if clicking inside the ScrollArea
-    if (e.target instanceof Element && e.target.closest('.scroll-area-logs')) {
-      e.stopPropagation();
-    }
+    // Stop propagation for all clicks inside the content
+    e.stopPropagation();
   };
 
   return (
@@ -116,11 +114,17 @@ export function BackendConnectionButton() {
                 <DialogContent 
                   className="sm:max-w-[700px] max-h-[80vh]"
                   onClick={handleDialogContentClick}
+                  onPointerDownOutside={(e) => {
+                    // Prevent closing when clicking inside the content
+                    if (e.target instanceof Element && 
+                        e.target.closest('.scroll-area-logs')) {
+                      e.preventDefault();
+                    }
+                  }}
                   onInteractOutside={(e) => {
                     // Prevent closing dialog when interacting with content
                     if (e.target instanceof Element && 
-                        (e.target.closest('.scroll-area-logs') || 
-                         e.target.closest('[role="dialog"]'))) {
+                        e.target.closest('.scroll-area-logs')) {
                       e.preventDefault();
                     }
                   }}
