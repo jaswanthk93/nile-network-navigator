@@ -1,3 +1,4 @@
+
 const express = require('express');
 const cors = require('cors');
 const snmpHandler = require('./handlers/snmpHandler');
@@ -72,6 +73,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/logs', (req, res) => {
   const limit = parseInt(req.query.limit) || 100;
   const limitedLogs = logs.slice(0, limit);
+  logger.info(`Logs requested. Returning ${limitedLogs.length} entries.`);
   res.json(limitedLogs);
 });
 

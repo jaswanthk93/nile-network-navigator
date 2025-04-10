@@ -29,7 +29,7 @@ export function BackendLogViewer() {
       
       // Provide more helpful error message for common issues
       if (errorMessage.includes("404")) {
-        setError("Logs endpoint not found (404). Make sure the backend server is running and the API endpoint exists.");
+        setError("Logs endpoint not found (404). Make sure the backend server is running and the API endpoint exists at '/api/logs'.");
       } else if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
         setError("Network error connecting to backend. Check that the server is running and accessible.");
       } else if (errorMessage.includes("timeout")) {
