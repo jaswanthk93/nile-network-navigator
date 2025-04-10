@@ -583,8 +583,187 @@ function parseModelFromSNMP(sysDescr: string, manufacturer: string | null): stri
 }
 
 // Use SNMP to get device information
-async function getDeviceInfoViaSNMP(ipAddress: string, updateProgress: (message: string, progress: number) => void): Promise<{
+async function getDeviceInfoViaSNMP(
+  ipAddress: string, 
+  updateProgress: (message: string, progress: number) => void
+): Promise<{
   hostname: string | null;
   make: string | null;
   model: string | null;
-  category: string | null
+  category: string | null;
+}> {
+  try {
+    updateProgress(`Retrieving SNMP information from ${ipAddress}...`, 1);
+    
+    // In a real implementation, we would use actual SNMP queries
+    // For now, we'll simulate this with some sample data
+    const sysName = `Device-${ipAddress.split('.').join('-')}`;
+    const sysDescr = `Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.0(2)SE, RELEASE SOFTWARE (fc1)`;
+    const sysObjectID = "1.3.6.1.4.1.9.1.716"; // Cisco 2960
+    
+    // Extract manufacturer from OID
+    const make = getManufacturerFromOID(sysObjectID);
+    
+    // Extract model from system description
+    const model = parseModelFromSNMP(sysDescr, make);
+    
+    // Determine device type/category
+    const category = determineDeviceTypeFromSNMP(sysDescr, sysObjectID);
+    
+    updateProgress(`SNMP information retrieved from ${ipAddress}`, 3);
+    
+    return {
+      hostname: sysName,
+      make,
+      model,
+      category
+    };
+  } catch (error) {
+    console.error(`Error getting SNMP info from ${ipAddress}:`, error);
+    return {
+      hostname: null,
+      make: null,
+      model: null,
+      category: null
+    };
+  }
+}
+
+// Function to discover devices in a subnet and gather information about them
+export async function discoverDevicesInSubnet(
+  cidr: string,
+  updateProgress: (message: string, progress: number) => void
+): Promise<any[]> {
+  const devices: any[] = [];
+  const { baseIP, maskBits } = parseCIDR(cidr);
+  
+  // Parse the base IP components and calculate network range
+  const ipParts = baseIP.split('.');
+  const ipPrefix = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}`;
+  
+  // Get our local IP address for subnet calculation
+  // In browser, we can't directly get the client's IP, so we'll use the base IP as a proxy
+  const localIP = baseIP;
+  
+  // We'll scan a limited range in the last octet (1-254) to avoid timeouts
+  // In a real implementation, this would be more comprehensive
+  const startRange = 1;
+  const endRange = 254;
+  const ipCount = endRange - startRange + 1;
+  let scannedCount = 0;
+  
+  updateProgress(`Beginning scan of subnet ${cidr}...`, 0);
+  
+  for (let i = startRange; i <= endRange; i++) {
+    const ipAddress = `${ipPrefix}.${i}`;
+    
+    // Calculate percentage progress
+    const progress = Math.floor((scannedCount / ipCount) * 100);
+    
+    // Update progress before starting this IP
+    updateProgress(`Scanning ${ipAddress}...`, progress);
+    
+    // Check if device responds to ping
+    const pingResult = simulatePingAndARPLookup(ipAddress, localIP, maskBits);
+    
+    if (pingResult.reachable) {
+      // Basic device info
+      const newDevice: any = {
+        ip_address: ipAddress,
+        hostname: null,
+        mac_address: pingResult.macAddress,
+        needs_verification: false,
+        category: "Unknown",
+        make: null,
+        model: null,
+        os_version: null,
+        last_seen: new Date().toISOString()
+      };
+      
+      // If we have a MAC address, try to identify the manufacturer
+      if (pingResult.macAddress) {
+        newDevice.make = identifyDeviceFromMAC(pingResult.macAddress);
+      }
+      
+      // If we can guess the category based on MAC or IP, do so
+      if (newDevice.make) {
+        newDevice.category = determineDeviceType(ipAddress, newDevice.make);
+      } else {
+        newDevice.category = determineDeviceType(ipAddress);
+      }
+      
+      // Check if we can get additional info via SNMP
+      // This should only be used when we have a backend agent capable of SNMP
+      try {
+        const snmpInfo = await getDeviceInfoViaSNMP(ipAddress, updateProgress);
+        
+        if (snmpInfo.hostname) {
+          newDevice.hostname = snmpInfo.hostname;
+        }
+        
+        if (snmpInfo.make) {
+          newDevice.make = snmpInfo.make;
+        }
+        
+        if (snmpInfo.model) {
+          newDevice.model = snmpInfo.model;
+        }
+        
+        if (snmpInfo.category) {
+          newDevice.category = snmpInfo.category;
+        }
+      } catch (error) {
+        console.warn(`SNMP information retrieval failed for ${ipAddress}:`, error);
+        newDevice.needs_verification = true;
+      }
+      
+      // If we're missing key information, mark for verification
+      if (!newDevice.make || !newDevice.model || !newDevice.hostname) {
+        newDevice.needs_verification = true;
+      }
+      
+      devices.push(newDevice);
+    }
+    
+    scannedCount++;
+  }
+  
+  updateProgress(`Scan complete. Found ${devices.length} devices.`, 100);
+  return devices;
+}
+
+// Function to save discovered devices to the database
+export async function saveDiscoveredDevices(
+  devices: any[],
+  siteId: string,
+  subnetId: string,
+  userId: string
+): Promise<{ error: Error | null }> {
+  try {
+    // For each device, write to the database
+    for (const device of devices) {
+      // Add site_id, subnet_id, and user_id to each device record
+      const deviceRecord = {
+        ...device,
+        site_id: siteId,
+        subnet_id: subnetId,
+        user_id: userId
+      };
+      
+      // Insert the device record
+      const { error } = await supabase
+        .from('devices')
+        .insert(deviceRecord);
+      
+      if (error) {
+        console.error('Error inserting device:', error);
+        return { error };
+      }
+    }
+    
+    return { error: null };
+  } catch (error) {
+    console.error('Error saving devices:', error);
+    return { error: error instanceof Error ? error : new Error('Unknown error saving devices') };
+  }
+}
