@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ReloadIcon } from "lucide-react";
+import { RefreshCwIcon } from "lucide-react";
 import { fetchBackendLogs } from "@/utils/backendConnection";
 
 export function BackendLogViewer() {
@@ -57,12 +57,12 @@ export function BackendLogViewer() {
         >
           {isLoading ? (
             <>
-              <ReloadIcon className="h-3 w-3 animate-spin" />
+              <RefreshCwIcon className="h-3 w-3 animate-spin" />
               <span>Loading...</span>
             </>
           ) : (
             <>
-              <ReloadIcon className="h-3 w-3" />
+              <RefreshCwIcon className="h-3 w-3" />
               <span>Refresh</span>
             </>
           )}

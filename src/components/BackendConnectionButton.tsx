@@ -1,8 +1,7 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ConnectorIcon, LoaderCircleIcon, FileTextIcon } from "lucide-react";
+import { PlugIcon, LoaderCircleIcon, FileTextIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { checkBackendConnection, getConnectionErrorExplanation } from "@/utils/backendConnection";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -67,7 +66,7 @@ export function BackendConnectionButton() {
             {isChecking ? (
               <LoaderCircleIcon className="h-4 w-4 animate-spin" />
             ) : (
-              <ConnectorIcon className="h-4 w-4" />
+              <PlugIcon className="h-4 w-4" />
             )}
             <span className="sr-only">Check backend connection</span>
           </Button>
