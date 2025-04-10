@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -49,6 +50,14 @@ export function BackendConnectionButton() {
       });
     } finally {
       setIsChecking(false);
+    }
+  };
+
+  // Handler to prevent dialog from closing when clicking inside the log viewer
+  const handleDialogContentClick = (e: React.MouseEvent) => {
+    // Only stop propagation if clicking inside the ScrollArea
+    if (e.target instanceof Element && e.target.closest('.scroll-area-logs')) {
+      e.stopPropagation();
     }
   };
 
@@ -104,11 +113,22 @@ export function BackendConnectionButton() {
                     View Logs
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[700px] max-h-[80vh]">
+                <DialogContent 
+                  className="sm:max-w-[700px] max-h-[80vh]"
+                  onClick={handleDialogContentClick}
+                  onInteractOutside={(e) => {
+                    // Prevent closing dialog when interacting with content
+                    if (e.target instanceof Element && 
+                        (e.target.closest('.scroll-area-logs') || 
+                         e.target.closest('[role="dialog"]'))) {
+                      e.preventDefault();
+                    }
+                  }}
+                >
                   <DialogHeader>
                     <DialogTitle>Backend Connection Logs</DialogTitle>
                   </DialogHeader>
-                  <ScrollArea className="h-[500px] rounded-md border p-4">
+                  <ScrollArea className="h-[500px] rounded-md border p-4 scroll-area-logs">
                     <BackendLogViewer />
                   </ScrollArea>
                 </DialogContent>

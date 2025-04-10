@@ -76,18 +76,29 @@ export const fetchBackendLogs = async (): Promise<{
 }[]> => {
   try {
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    console.log(`Fetching logs from ${backendUrl}/api/logs`);
+    
+    // Add timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
     const response = await fetch(`${backendUrl}/api/logs`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
       throw new Error(`Server responded with status: ${response.status}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log(`Successfully fetched ${data.length} log entries`);
+    return data;
   } catch (error) {
     console.error('Error fetching backend logs:', error);
     throw error;

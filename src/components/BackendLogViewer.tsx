@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { RefreshCwIcon } from "lucide-react";
@@ -15,23 +15,39 @@ export function BackendLogViewer() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const getLogs = async () => {
+  const getLogs = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
+      console.log("Fetching backend logs...");
       const logData = await fetchBackendLogs();
       setLogs(logData);
     } catch (err) {
       console.error("Error fetching logs:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch logs");
+      const errorMessage = err instanceof Error ? err.message : "Failed to fetch logs";
+      setError(errorMessage);
+      
+      // Provide more helpful error message for common issues
+      if (errorMessage.includes("404")) {
+        setError("Logs endpoint not found (404). Make sure the backend server is running and the API endpoint exists.");
+      } else if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
+        setError("Network error connecting to backend. Check that the server is running and accessible.");
+      } else if (errorMessage.includes("timeout")) {
+        setError("Request timed out. The backend server may be overloaded or unreachable.");
+      }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     getLogs();
-  }, []);
+    
+    // Set up a polling interval to refresh logs periodically
+    // This is commented out to prevent continuous refresh issues
+    // const interval = setInterval(getLogs, 10000); // Refresh every 10 seconds
+    // return () => clearInterval(interval);
+  }, [getLogs]);
 
   const getLogStyle = (level: string) => {
     switch (level) {
