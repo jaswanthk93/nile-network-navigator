@@ -7,10 +7,10 @@
 // Re-export everything from our modular files
 export { isValidVlanId } from './networkValidation';
 export { 
-  SwitchConnectionDetails,
   connectToSwitch,
   executeCommands
 } from './deviceConnection';
+export type { SwitchConnectionDetails } from './deviceConnection';
 export {
   executeSnmpQueries,
   executeSnmpWalk,
