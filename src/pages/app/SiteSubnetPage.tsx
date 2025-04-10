@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/use-toast";
-import { MapPinIcon, PlusIcon, TrashIcon, KeyIcon } from "lucide-react";
+import { MapPinIcon, PlusIcon, TrashIcon, KeyIcon, EditIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -71,6 +71,7 @@ const isSubnetWithin = (subnet1: string, prefix1: string, subnet2: string, prefi
 const SiteSubnetPage = () => {
   const [subnets, setSubnets] = useState<Subnet[]>([]);
   const [addingSubnet, setAddingSubnet] = useState(false);
+  const [editingSubnet, setEditingSubnet] = useState<string | null>(null);
   const [siteAdded, setSiteAdded] = useState(false);
   const [currentSiteId, setCurrentSiteId] = useState<string | null>(null);
   const { toast } = useToast();
@@ -141,9 +142,11 @@ const SiteSubnetPage = () => {
             name: subnet.description || 'Subnet',
             subnet: subnet.cidr.split('/')[0],
             prefix: subnet.cidr.split('/')[1] || '24',
-            username: 'admin',
-            password: 'password',
-            accessMethod: 'ssh' as "ssh" | "telnet"
+            username: subnet.username || '',
+            password: subnet.password || '',
+            community: subnet.snmp_community || 'public',
+            snmpVersion: subnet.snmp_version as "1" | "2c" | "3" || '2c',
+            accessMethod: subnet.access_method as "ssh" | "telnet" | "snmp" || 'snmp'
           }));
           
           setSubnets(loadedSubnets);
@@ -194,6 +197,36 @@ const SiteSubnetPage = () => {
     }
   };
 
+  const startEditSubnet = (subnet: Subnet) => {
+    setEditingSubnet(subnet.id);
+    setAddingSubnet(false);
+    
+    subnetForm.reset({
+      name: subnet.name,
+      subnet: subnet.subnet,
+      prefix: subnet.prefix,
+      username: subnet.username || "",
+      password: subnet.password || "",
+      community: subnet.community || "public",
+      snmpVersion: subnet.snmpVersion || "2c",
+      accessMethod: subnet.accessMethod,
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingSubnet(null);
+    subnetForm.reset({
+      name: "",
+      subnet: "",
+      prefix: "24",
+      username: "",
+      password: "",
+      community: "public",
+      snmpVersion: "2c",
+      accessMethod: "snmp",
+    });
+  };
+
   const onSubnetSubmit = async (values: SubnetFormValues) => {
     if (!user || !currentSiteId) {
       toast({
@@ -206,30 +239,32 @@ const SiteSubnetPage = () => {
     
     const newSubnetCidr = `${values.subnet}/${values.prefix}`;
     
-    const exactDuplicate = subnets.some(
-      subnet => subnet.subnet === values.subnet && subnet.prefix === values.prefix
-    );
-    
-    if (exactDuplicate) {
-      toast({
-        title: "Duplicate Subnet",
-        description: `Subnet ${newSubnetCidr} already exists.`,
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    const overlappingSubnet = subnets.find(subnet => 
-      isSubnetWithin(subnet.subnet, subnet.prefix, values.subnet, values.prefix)
-    );
-    
-    if (overlappingSubnet) {
-      toast({
-        title: "Overlapping Subnet",
-        description: `Subnet ${newSubnetCidr} overlaps with existing subnet ${overlappingSubnet.subnet}/${overlappingSubnet.prefix}.`,
-        variant: "destructive",
-      });
-      return;
+    if (!editingSubnet) {
+      const exactDuplicate = subnets.some(
+        subnet => subnet.subnet === values.subnet && subnet.prefix === values.prefix
+      );
+      
+      if (exactDuplicate) {
+        toast({
+          title: "Duplicate Subnet",
+          description: `Subnet ${newSubnetCidr} already exists.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      const overlappingSubnet = subnets.find(subnet => 
+        isSubnetWithin(subnet.subnet, subnet.prefix, values.subnet, values.prefix)
+      );
+      
+      if (overlappingSubnet) {
+        toast({
+          title: "Overlapping Subnet",
+          description: `Subnet ${newSubnetCidr} overlaps with existing subnet ${overlappingSubnet.subnet}/${overlappingSubnet.prefix}.`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
     
     try {
@@ -240,54 +275,98 @@ const SiteSubnetPage = () => {
       if (values.accessMethod === "snmp") {
         additionalData.snmp_community = values.community;
         additionalData.snmp_version = values.snmpVersion;
+        additionalData.username = null;
+        additionalData.password = null;
       } else {
         additionalData.username = values.username;
         additionalData.password = values.password;
+        additionalData.snmp_community = null;
+        additionalData.snmp_version = null;
       }
-      
-      const { data, error } = await supabase
-        .from('subnets')
-        .insert({
-          site_id: currentSiteId,
-          cidr: cidr,
-          description: values.name,
-          user_id: user.id,
-          access_method: values.accessMethod,
-          ...additionalData
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      const newSubnet: Subnet = {
-        id: data.id,
-        name: values.name,
-        subnet: values.subnet,
-        prefix: values.prefix,
-        accessMethod: values.accessMethod,
-      };
-      
-      if (values.accessMethod === "snmp") {
-        newSubnet.community = values.community;
-        newSubnet.snmpVersion = values.snmpVersion;
+
+      if (editingSubnet) {
+        const { data, error } = await supabase
+          .from('subnets')
+          .update({
+            cidr: cidr,
+            description: values.name,
+            access_method: values.accessMethod,
+            ...additionalData
+          })
+          .eq('id', editingSubnet)
+          .eq('user_id', user.id)
+          .select()
+          .single();
+        
+        if (error) throw error;
+        
+        setSubnets(prev => prev.map(subnet => 
+          subnet.id === editingSubnet 
+            ? {
+                id: data.id,
+                name: values.name,
+                subnet: values.subnet,
+                prefix: values.prefix,
+                accessMethod: values.accessMethod,
+                ...(values.accessMethod === "snmp" 
+                  ? { community: values.community, snmpVersion: values.snmpVersion }
+                  : { username: values.username, password: values.password }),
+              }
+            : subnet
+        ));
+        
+        setEditingSubnet(null);
+        
+        toast({
+          title: "Subnet updated",
+          description: `Subnet ${values.name} has been updated.`,
+        });
       } else {
-        newSubnet.username = values.username;
-        newSubnet.password = values.password;
+        const { data, error } = await supabase
+          .from('subnets')
+          .insert({
+            site_id: currentSiteId,
+            cidr: cidr,
+            description: values.name,
+            user_id: user.id,
+            access_method: values.accessMethod,
+            ...additionalData
+          })
+          .select()
+          .single();
+        
+        if (error) throw error;
+        
+        const newSubnet: Subnet = {
+          id: data.id,
+          name: values.name,
+          subnet: values.subnet,
+          prefix: values.prefix,
+          accessMethod: values.accessMethod,
+        };
+        
+        if (values.accessMethod === "snmp") {
+          newSubnet.community = values.community;
+          newSubnet.snmpVersion = values.snmpVersion;
+        } else {
+          newSubnet.username = values.username;
+          newSubnet.password = values.password;
+        }
+        
+        setSubnets((prev) => [...prev, newSubnet]);
+        toast({
+          title: "Subnet added",
+          description: `Subnet ${values.name} has been added to your site.`,
+        });
       }
       
-      setSubnets((prev) => [...prev, newSubnet]);
       setAddingSubnet(false);
       subnetForm.reset();
       
-      toast({
-        title: "Subnet added",
-        description: `Subnet ${values.name} has been added to your site.`,
-      });
     } catch (error) {
       console.error("Error saving subnet:", error);
       toast({
-        title: "Error adding subnet",
+        title: editingSubnet ? "Error updating subnet" : "Error adding subnet",
         description: "There was a problem saving your subnet information.",
         variant: "destructive",
       });
@@ -438,14 +517,24 @@ const SiteSubnetPage = () => {
                             {subnet.subnet}/{subnet.prefix} ({subnet.accessMethod.toUpperCase()})
                           </p>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeSubnet(subnet.id)}
-                          aria-label={`Remove ${subnet.name}`}
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                        </Button>
+                        <div className="flex space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => startEditSubnet(subnet)}
+                            aria-label={`Edit ${subnet.name}`}
+                          >
+                            <EditIcon className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeSubnet(subnet.id)}
+                            aria-label={`Remove ${subnet.name}`}
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -459,14 +548,20 @@ const SiteSubnetPage = () => {
                 </Alert>
               )}
 
-              {addingSubnet ? (
+              {(addingSubnet || editingSubnet) ? (
                 <div className="mt-6 space-y-4">
                   <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-medium">Add New Subnet</h3>
+                    <h3 className="text-lg font-medium">
+                      {editingSubnet ? "Edit Subnet" : "Add New Subnet"}
+                    </h3>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setAddingSubnet(false)}
+                      onClick={() => {
+                        setAddingSubnet(false);
+                        setEditingSubnet(null);
+                        subnetForm.reset();
+                      }}
                     >
                       Cancel
                     </Button>
@@ -510,7 +605,7 @@ const SiteSubnetPage = () => {
                               <FormLabel>Prefix</FormLabel>
                               <Select
                                 onValueChange={field.onChange}
-                                defaultValue={field.value}
+                                value={field.value}
                               >
                                 <FormControl>
                                   <SelectTrigger>
@@ -539,7 +634,7 @@ const SiteSubnetPage = () => {
                             <FormLabel>Access Method</FormLabel>
                             <Select
                               onValueChange={field.onChange as (value: string) => void}
-                              defaultValue={field.value}
+                              value={field.value}
                             >
                               <FormControl>
                                 <SelectTrigger>
@@ -581,7 +676,7 @@ const SiteSubnetPage = () => {
                                 <FormLabel>SNMP Version</FormLabel>
                                 <Select
                                   onValueChange={field.onChange as (value: string) => void}
-                                  defaultValue={field.value}
+                                  value={field.value}
                                 >
                                   <FormControl>
                                     <SelectTrigger>
@@ -631,7 +726,7 @@ const SiteSubnetPage = () => {
                         </div>
                       )}
 
-                      <Button type="submit">Add Subnet</Button>
+                      <Button type="submit">{editingSubnet ? "Update Subnet" : "Add Subnet"}</Button>
                     </form>
                   </Form>
                 </div>
@@ -639,7 +734,19 @@ const SiteSubnetPage = () => {
                 <Button
                   variant="outline"
                   className="mt-4"
-                  onClick={() => setAddingSubnet(true)}
+                  onClick={() => {
+                    setAddingSubnet(true);
+                    subnetForm.reset({
+                      name: "",
+                      subnet: "",
+                      prefix: "24",
+                      username: "",
+                      password: "",
+                      community: "public",
+                      snmpVersion: "2c",
+                      accessMethod: "snmp",
+                    });
+                  }}
                 >
                   <PlusIcon className="h-4 w-4 mr-2" />
                   Add Subnet
