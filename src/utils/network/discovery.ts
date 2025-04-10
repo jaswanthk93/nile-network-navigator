@@ -5,7 +5,7 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import { SubnetData } from "@/types/network";
-import { getIPRange, simulatePingAndARPLookup } from './ipUtils';
+import { getIPRange, simulatePingAndARPLookup, parseCIDR } from './ipUtils';
 import { 
   identifyDeviceFromMAC, 
   determineDeviceType, 
@@ -124,7 +124,7 @@ export async function discoverDevicesInSubnet(
   }
   
   const devices: any[] = [];
-  const { baseIP, maskBits } = getIPRange(cidr);
+  const { baseIP, maskBits } = parseCIDR(cidr);
   
   // Get IP range based on subnet mask
   const { startIP, endIP, totalIPs } = getIPRange(cidr);

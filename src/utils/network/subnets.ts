@@ -58,7 +58,17 @@ export async function fetchSubnets(userId: string): Promise<{ data: SubnetData[]
       return { data: null, error: new Error(error.message) };
     }
     
-    return { data, error: null };
+    // Add type casting to ensure data conforms to SubnetData interface
+    // This handles the case where access_method might be null or an invalid value
+    const typedData: SubnetData[] = data.map(subnet => ({
+      ...subnet,
+      // Type casting for access_method to match SubnetData type
+      access_method: (subnet.access_method as "snmp" | "ssh" | "telnet" | null),
+      // Type casting for other fields that might need it
+      snmp_version: subnet.snmp_version as "1" | "2c" | "3" | null
+    }));
+    
+    return { data: typedData, error: null };
   } catch (error) {
     console.error('Error fetching subnets:', error);
     return { 
