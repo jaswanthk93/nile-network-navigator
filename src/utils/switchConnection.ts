@@ -1,5 +1,10 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { DiscoveredVlan, SubnetData } from "../types/network";
+
+// Constants for VLAN validation
+const MIN_VLAN_ID = 1;
+const MAX_VLAN_ID = 4094;
 
 // Interface for switch connection details
 export interface SwitchConnectionDetails {
@@ -16,9 +21,16 @@ export interface SwitchConnectionDetails {
 // Configuration for the agent
 const BACKEND_URL = "http://localhost:3001/api"; // Update this to match your agent URL
 
+// Helper function to validate VLAN IDs
+export function isValidVlanId(vlanId: number): boolean {
+  return vlanId >= MIN_VLAN_ID && vlanId <= MAX_VLAN_ID;
+}
+
 // Handles API requests to the backend agent
 async function callBackendApi(endpoint: string, data: any): Promise<any> {
   try {
+    console.log(`Calling backend API: ${endpoint} with data:`, data);
+    
     const response = await fetch(`${BACKEND_URL}${endpoint}`, {
       method: 'POST',
       headers: {
@@ -32,7 +44,9 @@ async function callBackendApi(endpoint: string, data: any): Promise<any> {
       throw new Error(`API error (${response.status}): ${errorText}`);
     }
     
-    return await response.json();
+    const result = await response.json();
+    console.log(`Backend API response from ${endpoint}:`, result);
+    return result;
   } catch (error) {
     console.error(`Error calling ${endpoint}:`, error);
     throw error;
@@ -194,6 +208,7 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
   try {
     if (connectionDetails.method === "snmp") {
       // Direct VLAN discovery via agent
+      console.log(`Discovering VLANs from ${connectionDetails.ip} via SNMP`);
       const result = await callBackendApi("/snmp/discover-vlans", {
         ip: connectionDetails.ip,
         community: connectionDetails.community || "public",
@@ -201,9 +216,19 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
         make: connectionDetails.make
       });
       
-      return result.vlans;
+      // Filter out invalid VLANs
+      const validVlans = result.vlans.filter((vlan: any) => 
+        isValidVlanId(vlan.vlanId)
+      );
+      
+      if (result.vlans.length !== validVlans.length) {
+        console.warn(`Filtered out ${result.vlans.length - validVlans.length} invalid VLANs from ${connectionDetails.ip}`);
+      }
+      
+      return validVlans;
     } else {
       // For SSH/Telnet, first establish a connection
+      console.log(`Discovering VLANs from ${connectionDetails.ip} via ${connectionDetails.method.toUpperCase()}`);
       const sessionId = await connectToSwitch(connectionDetails);
       
       if (!sessionId) {
@@ -232,6 +257,7 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
       }
       
       // Execute the commands
+      console.log(`Executing ${connectionDetails.method.toUpperCase()} commands on ${connectionDetails.ip}: ${commandSet.join(", ")}`);
       const output = await executeCommands(sessionId, connectionDetails.method, commandSet);
       
       // Disconnect the session
@@ -242,7 +268,16 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
       }
       
       // Parse the output to extract VLAN information
-      return parseVlanOutput(output, connectionDetails.make || "unknown");
+      const parsedVlans = parseVlanOutput(output, connectionDetails.make || "unknown");
+      
+      // Filter out invalid VLANs
+      const validVlans = parsedVlans.filter(vlan => isValidVlanId(vlan.vlanId));
+      
+      if (parsedVlans.length !== validVlans.length) {
+        console.warn(`Filtered out ${parsedVlans.length - validVlans.length} invalid VLANs from ${connectionDetails.ip}`);
+      }
+      
+      return validVlans;
     }
   } catch (error) {
     console.error("Error retrieving VLANs from switch:", error);
@@ -400,6 +435,9 @@ export async function discoverVlans(
   const subnets = subnetsResult.data as SubnetData[] || [];
   let processedDevices = 0;
   
+  // Log discovery process
+  console.log(`Starting VLAN discovery on ${switches.length} switches`);
+  
   // Process each switch
   for (const switchDevice of switches) {
     if (progressCallback) {
@@ -446,7 +484,9 @@ export async function discoverVlans(
     }
     
     try {
+      console.log(`Discovering VLANs from ${switchDevice.ip_address} (${switchDevice.hostname || 'unknown'}) via ${connectionDetails.method}`);
       const vlans = await getVlansFromSwitch(connectionDetails);
+      console.log(`Found ${vlans.length} valid VLANs on ${switchDevice.ip_address}`);
       
       // Add discovered VLANs to the collection
       for (const vlan of vlans) {
@@ -483,5 +523,6 @@ export async function discoverVlans(
     progressCallback("VLAN discovery complete", 100);
   }
   
+  console.log(`VLAN discovery complete. Found ${allVlans.length} unique valid VLANs.`);
   return allVlans;
 }

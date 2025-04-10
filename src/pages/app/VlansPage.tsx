@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
-import { FolderKanbanIcon, LayersIcon, TagIcon, Loader2Icon } from "lucide-react";
+import { FolderKanbanIcon, LayersIcon, TagIcon, Loader2Icon, AlertTriangleIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { discoverVlans } from "@/utils/switchConnection";
@@ -20,8 +20,13 @@ interface Vlan {
   usedBy: string[];
 }
 
+// Constants for VLAN validation
+const MIN_VLAN_ID = 1;
+const MAX_VLAN_ID = 4094;
+
 const VlansPage = () => {
   const [vlans, setVlans] = useState<Vlan[]>([]);
+  const [invalidVlans, setInvalidVlans] = useState<Vlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [discoveryInProgress, setDiscoveryInProgress] = useState(false);
   const [discoveryProgress, setDiscoveryProgress] = useState({ message: "", percent: 0 });
@@ -29,6 +34,10 @@ const VlansPage = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  const isValidVlanId = (vlanId: number) => {
+    return vlanId >= MIN_VLAN_ID && vlanId <= MAX_VLAN_ID;
+  };
 
   useEffect(() => {
     if (!user) {
@@ -130,36 +139,59 @@ const VlansPage = () => {
             
             setVlans(defaultVlans);
           } else {
-            // Map discovered VLANs to our interface
-            const mappedVlans: Vlan[] = discoveredVlans.map((vlan, index) => ({
-              id: `discovered-${vlan.vlanId}`,
-              vlanId: vlan.vlanId,
-              name: vlan.name,
-              segmentName: "", // User will need to assign this
-              subnet: vlan.subnet || "",
-              usedBy: vlan.usedBy
-            }));
+            // Map discovered VLANs to our interface and filter out invalid VLANs
+            const valid: Vlan[] = [];
+            const invalid: Vlan[] = [];
             
-            setVlans(mappedVlans);
+            discoveredVlans.forEach((vlan, index) => {
+              const mappedVlan: Vlan = {
+                id: `discovered-${vlan.vlanId}`,
+                vlanId: vlan.vlanId,
+                name: vlan.name,
+                segmentName: "", // User will need to assign this
+                subnet: vlan.subnet || "",
+                usedBy: vlan.usedBy
+              };
+              
+              if (isValidVlanId(vlan.vlanId)) {
+                valid.push(mappedVlan);
+              } else {
+                invalid.push(mappedVlan);
+              }
+            });
+            
+            setVlans(valid);
+            setInvalidVlans(invalid);
+            
+            if (invalid.length > 0) {
+              toast({
+                title: "Invalid VLAN IDs detected",
+                description: `${invalid.length} VLANs were filtered out because they had IDs outside the valid range (${MIN_VLAN_ID}-${MAX_VLAN_ID}).`,
+                variant: "destructive",
+              });
+            }
             
             toast({
               title: "VLAN Discovery Complete",
-              description: `Successfully discovered ${mappedVlans.length} VLANs from your network devices.`,
+              description: `Successfully discovered ${valid.length} valid VLANs from your network devices.`,
             });
           }
           
           setDiscoveryInProgress(false);
         } else {
-          // Format the database VLANs to match our interface
-          const formattedVlans: Vlan[] = vlanData.map(dbVlan => {
+          // Format the database VLANs to match our interface, filtering out invalid ones
+          const valid: Vlan[] = [];
+          const invalid: Vlan[] = [];
+          
+          vlanData.forEach(dbVlan => {
             // Find devices that might be using this VLAN
             const vlanDevices = devices
               .filter(d => d.category === 'Switch' || d.make === 'Cisco' || d.make === 'Juniper')
               .slice(0, 3)
               .map(d => d.hostname || d.ip_address)
               .filter(Boolean) as string[];
-              
-            return {
+            
+            const mappedVlan: Vlan = {
               id: dbVlan.id,
               vlanId: dbVlan.vlan_id,
               name: dbVlan.name,
@@ -167,9 +199,24 @@ const VlansPage = () => {
               subnet: "", // Would be populated from real data
               usedBy: vlanDevices
             };
+            
+            if (isValidVlanId(dbVlan.vlan_id)) {
+              valid.push(mappedVlan);
+            } else {
+              invalid.push(mappedVlan);
+            }
           });
           
-          setVlans(formattedVlans);
+          setVlans(valid);
+          setInvalidVlans(invalid);
+          
+          if (invalid.length > 0) {
+            toast({
+              title: "Invalid VLAN IDs detected",
+              description: `${invalid.length} VLANs were filtered out because they had IDs outside the valid range (${MIN_VLAN_ID}-${MAX_VLAN_ID}).`,
+              variant: "destructive",
+            });
+          }
         }
       } catch (error) {
         console.error("Error loading VLAN data:", error);
@@ -187,8 +234,21 @@ const VlansPage = () => {
   }, [user, toast, navigate]);
 
   const handleSaveEdit = (id: string, field: keyof Vlan, value: string) => {
+    // Add validation for VLAN ID
+    if (field === "vlanId") {
+      const numValue = parseInt(value, 10);
+      if (!isValidVlanId(numValue)) {
+        toast({
+          title: "Invalid VLAN ID",
+          description: `VLAN IDs must be between ${MIN_VLAN_ID} and ${MAX_VLAN_ID}.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
     setVlans(vlans.map(vlan => 
-      vlan.id === id ? { ...vlan, [field]: value } : vlan
+      vlan.id === id ? { ...vlan, [field]: field === "vlanId" ? parseInt(value, 10) : value } : vlan
     ));
     setEditingCell(null);
   };
@@ -246,9 +306,18 @@ const VlansPage = () => {
   };
 
   const handleAddVlan = () => {
-    // Find the highest VLAN ID and add 10 for the new one
-    const maxVlanId = Math.max(0, ...vlans.map(v => v.vlanId));
-    const newVlanId = maxVlanId + 10;
+    // Find the highest VLAN ID and add 10 for the new one, ensuring it's within valid range
+    const maxVlanId = Math.max(...vlans.map(v => v.vlanId), 0);
+    let newVlanId = maxVlanId + 10;
+    
+    // Ensure the new VLAN ID is within valid range
+    if (newVlanId > MAX_VLAN_ID) {
+      newVlanId = Math.min(...vlans.map(v => v.vlanId).filter(id => id > MIN_VLAN_ID), MAX_VLAN_ID);
+      // If all VLANs are at max, use the minimum valid VLAN ID
+      if (newVlanId === Infinity) {
+        newVlanId = MIN_VLAN_ID;
+      }
+    }
     
     const newVlan: Vlan = {
       id: `new-${Date.now()}`,
@@ -344,6 +413,21 @@ const VlansPage = () => {
             </div>
           ) : (
             <div className="space-y-4">
+              {invalidVlans.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-md p-4 mb-4">
+                  <div className="flex items-start">
+                    <AlertTriangleIcon className="h-5 w-5 text-amber-500 mt-0.5 mr-2" />
+                    <div>
+                      <h4 className="font-medium text-amber-800">Invalid VLAN IDs detected</h4>
+                      <p className="text-amber-700 text-sm mt-1">
+                        {invalidVlans.length} VLANs were filtered out because they had IDs outside the valid range ({MIN_VLAN_ID}-{MAX_VLAN_ID}).
+                        Invalid IDs: {invalidVlans.map(v => v.vlanId).join(', ')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
@@ -365,6 +449,8 @@ const VlansPage = () => {
                               type="number"
                               defaultValue={vlan.vlanId.toString()}
                               className="h-8 w-20"
+                              min={MIN_VLAN_ID}
+                              max={MAX_VLAN_ID}
                               onBlur={(e) => handleSaveEdit(vlan.id, "vlanId", e.target.value)}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") {
@@ -489,6 +575,7 @@ const VlansPage = () => {
 
               <div className="mt-4 text-sm text-muted-foreground">
                 <p>Click on any field to edit. Segment names will be used for organizing devices in Nile.</p>
+                <p className="mt-1">Valid VLAN IDs must be between {MIN_VLAN_ID} and {MAX_VLAN_ID}.</p>
               </div>
             </div>
           )}
