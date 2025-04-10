@@ -356,7 +356,7 @@ exports.discoverVlans = async (req, res) => {
                   usedBy: [ip]
                 });
               } else {
-                console.warn(`[SNMP] Invalid VLAN ID ${vlanId} discovered from ${ip}`);
+                console.warn(`[SNMP] Invalid VLAN ID ${vlanId} discovered from ${ip} (outside range ${MIN_VLAN_ID}-${MAX_VLAN_ID})`);
                 invalidVlans.push({
                   vlanId,
                   name: `VLAN${vlanId}`,
@@ -386,7 +386,7 @@ exports.discoverVlans = async (req, res) => {
               const oidParts = varbind.oid.split('.');
               const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
               
-              if (!isNaN(vlanId)) {
+              if (!isNaN(vlanId) && isValidVlanId(vlanId)) {
                 const vlan = vlans.find(v => v.vlanId === vlanId);
                 if (vlan && Buffer.isBuffer(varbind.value)) {
                   vlan.name = varbind.value.toString().trim();

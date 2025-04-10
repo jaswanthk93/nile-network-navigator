@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { DiscoveredVlan, SubnetData } from "../types/network";
 
@@ -216,6 +215,9 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
         make: connectionDetails.make
       });
       
+      // Log raw results for debugging
+      console.log(`Raw VLANs from ${connectionDetails.ip}:`, result.vlans);
+      
       // Filter out invalid VLANs
       const validVlans = result.vlans.filter((vlan: any) => 
         isValidVlanId(vlan.vlanId)
@@ -223,6 +225,10 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
       
       if (result.vlans.length !== validVlans.length) {
         console.warn(`Filtered out ${result.vlans.length - validVlans.length} invalid VLANs from ${connectionDetails.ip}`);
+        console.warn(`Invalid VLAN IDs: ${result.vlans
+          .filter((vlan: any) => !isValidVlanId(vlan.vlanId))
+          .map((vlan: any) => vlan.vlanId)
+          .join(', ')}`);
       }
       
       return validVlans;
@@ -270,11 +276,18 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
       // Parse the output to extract VLAN information
       const parsedVlans = parseVlanOutput(output, connectionDetails.make || "unknown");
       
+      // Log raw results for debugging
+      console.log(`Raw parsed VLANs from ${connectionDetails.ip}:`, parsedVlans);
+      
       // Filter out invalid VLANs
       const validVlans = parsedVlans.filter(vlan => isValidVlanId(vlan.vlanId));
       
       if (parsedVlans.length !== validVlans.length) {
         console.warn(`Filtered out ${parsedVlans.length - validVlans.length} invalid VLANs from ${connectionDetails.ip}`);
+        console.warn(`Invalid VLAN IDs: ${parsedVlans
+          .filter(vlan => !isValidVlanId(vlan.vlanId))
+          .map(vlan => vlan.vlanId)
+          .join(', ')}`);
       }
       
       return validVlans;
@@ -405,6 +418,7 @@ export async function discoverVlans(
 ): Promise<DiscoveredVlan[]> {
   const allVlans: DiscoveredVlan[] = [];
   const uniqueVlanIds = new Set<number>();
+  const invalidVlanIds = new Set<number>(); // Track invalid VLANs for logging
   
   // Filter devices to just get switches
   const switches = devices.filter(device => 
@@ -485,11 +499,17 @@ export async function discoverVlans(
     
     try {
       console.log(`Discovering VLANs from ${switchDevice.ip_address} (${switchDevice.hostname || 'unknown'}) via ${connectionDetails.method}`);
-      const vlans = await getVlansFromSwitch(connectionDetails);
-      console.log(`Found ${vlans.length} valid VLANs on ${switchDevice.ip_address}`);
+      const discoveredVlans = await getVlansFromSwitch(connectionDetails);
+      console.log(`Found ${discoveredVlans.length} valid VLANs on ${switchDevice.ip_address}`);
       
-      // Add discovered VLANs to the collection
-      for (const vlan of vlans) {
+      // Add discovered VLANs to the collection, filtering out invalid ones
+      for (const vlan of discoveredVlans) {
+        // Double-check VLAN ID is valid before adding
+        if (!isValidVlanId(vlan.vlanId)) {
+          invalidVlanIds.add(vlan.vlanId);
+          continue;
+        }
+        
         if (!uniqueVlanIds.has(vlan.vlanId)) {
           uniqueVlanIds.add(vlan.vlanId);
           
@@ -517,6 +537,10 @@ export async function discoverVlans(
     }
     
     processedDevices++;
+  }
+  
+  if (invalidVlanIds.size > 0) {
+    console.warn(`Found ${invalidVlanIds.size} invalid VLAN IDs: ${Array.from(invalidVlanIds).join(', ')}`);
   }
   
   if (progressCallback) {
