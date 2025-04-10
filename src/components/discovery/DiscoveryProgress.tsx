@@ -94,7 +94,10 @@ const DiscoveryProgress: React.FC<DiscoveryProgressProps> = ({
               <h3 className="font-medium">Subnets Scanned</h3>
             </div>
             <p className="mt-2 text-2xl font-bold">
-              {discovery.status === "idle" ? "0/0" : "1/1"}
+              {/* Fix the TypeScript error by using a more explicit condition */}
+              {discovery.status === "scanning" || discovery.status === "connecting" || 
+               discovery.status === "gathering" || discovery.status === "complete" 
+                ? "1/1" : "0/0"}
             </p>
           </div>
         </div>
