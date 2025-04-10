@@ -80,9 +80,9 @@ export const fetchBackendLogs = async (): Promise<{
     
     // Add timeout to prevent hanging requests
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // Increase timeout to 8 seconds
     
-    const response = await fetch(`${backendUrl}/api/logs`, {
+    const response = await fetch(`${backendUrl}/api/logs?limit=100`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -93,7 +93,8 @@ export const fetchBackendLogs = async (): Promise<{
     clearTimeout(timeoutId);
     
     if (!response.ok) {
-      throw new Error(`Server responded with status: ${response.status}`);
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Server responded with status: ${response.status}${errorText ? ` - ${errorText}` : ''}`);
     }
 
     const data = await response.json();
@@ -128,7 +129,8 @@ export const getConnectionTroubleshootingSteps = (errorType?: string): string[] 
   const commonSteps = [
     'Ensure the backend server is running',
     'Check your network connection',
-    'Verify the VITE_BACKEND_URL environment variable is set correctly'
+    'Verify the VITE_BACKEND_URL environment variable is set correctly',
+    'Check that the server is listening on the expected port (default: 3001)'
   ];
   
   switch (errorType) {

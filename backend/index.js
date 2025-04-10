@@ -69,12 +69,17 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'up', timestamp: new Date() });
 });
 
-// Logs endpoint
+// Logs endpoint - ensure this is set up correctly
 app.get('/api/logs', (req, res) => {
-  const limit = parseInt(req.query.limit) || 100;
-  const limitedLogs = logs.slice(0, limit);
-  logger.info(`Logs requested. Returning ${limitedLogs.length} entries.`);
-  res.json(limitedLogs);
+  try {
+    const limit = parseInt(req.query.limit) || 100;
+    const limitedLogs = logs.slice(0, limit);
+    logger.info(`Logs requested. Returning ${limitedLogs.length} entries.`);
+    res.json(limitedLogs);
+  } catch (error) {
+    logger.error('Error retrieving logs', { error: error.message });
+    res.status(500).json({ error: 'Failed to retrieve logs', message: error.message });
+  }
 });
 
 // SNMP endpoints
@@ -116,4 +121,5 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   logger.info(`Network discovery agent running on port ${PORT}`);
   logger.info(`Access the API at http://localhost:${PORT}/api/health`);
+  logger.info(`Logs available at http://localhost:${PORT}/api/logs`);
 });
