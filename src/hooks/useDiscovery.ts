@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -171,7 +170,6 @@ export const useDiscovery = (userId: string | undefined) => {
       return;
     }
 
-    // Check backend connection before starting
     await checkBackendStatus();
     
     if (!backendStatus?.connected) {
@@ -226,12 +224,11 @@ export const useDiscovery = (userId: string | undefined) => {
         message: `Scanning subnet ${subnetsToScan[currentSubnetIndex].cidr}...`,
       }));
       
-      // Use the backend connection for discovery
       console.log("Starting discovery with backend connected:", backendStatus.connected);
       const discoveredDevices = await discoverDevicesInSubnet(
         subnetsToScan[currentSubnetIndex].cidr,
         updateDiscoveryProgress,
-        true // Always attempt to use real backend connection
+        true
       );
       
       const devicesNeedingVerification = discoveredDevices.filter(device => 
@@ -262,8 +259,18 @@ export const useDiscovery = (userId: string | undefined) => {
       }));
       
       const devicesToSave = discoveredDevices.map(device => {
-        const { needs_verification, ...deviceData } = device;
-        return deviceData;
+        return {
+          ip_address: device.ip_address,
+          hostname: device.hostname || null,
+          mac_address: device.mac_address || null,
+          make: device.make || null,
+          model: device.model || null,
+          category: device.category || null,
+          status: device.status || 'unknown',
+          sysDescr: device.sysDescr || null,
+          needs_verification: device.needs_verification,
+          confirmed: false
+        };
       });
       
       const { error: saveError } = await saveDiscoveredDevices(

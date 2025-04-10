@@ -16,19 +16,32 @@ export async function saveDiscoveredDevices(
   userId: string
 ): Promise<{ error: Error | null }> {
   try {
+    console.log('Saving discovered devices:', devices.length);
+    
     // For each device, write to the database
     for (const device of devices) {
+      console.log('Processing device:', device);
+      
       // Add site_id, subnet_id, and user_id to each device record
+      // Ensure all property names match database column names (lowercase)
       const deviceRecord = {
-        ...device,
+        ip_address: device.ip_address,
+        hostname: device.hostname || null,
+        mac_address: device.mac_address || null,
+        make: device.make || null,
+        model: device.model || null,
+        category: device.category || null,
+        status: device.status || 'unknown',
         site_id: siteId,
         subnet_id: subnetId,
         user_id: userId,
         confirmed: device.confirmed || false,
         needs_verification: device.needs_verification || true,
-        // Fix the property name case mismatch - use lowercase for the database column
-        sysdescr: device.sysDescr || null  // Convert the case here
+        // Fix the column name - important: use lowercase 'sysdescr' to match database column
+        sysdescr: device.sysDescr || null  // Explicitly map from sysDescr to sysdescr
       };
+      
+      console.log('Prepared device record:', deviceRecord);
       
       // Insert the device record
       const { error } = await supabase

@@ -17,7 +17,7 @@ export async function getDeviceInfoViaSNMP(
   make: string | null;
   model: string | null;
   category: string | null;
-  sysDescr?: string | null;
+  sysDescr: string | null; // This property name needs to be preserved for consistency
   error?: string;
 }> {
   try {
@@ -45,7 +45,7 @@ export async function getDeviceInfoViaSNMP(
         make: deviceInfo.manufacturer || null,
         model: deviceInfo.model || null,
         category: deviceInfo.type || null,
-        sysDescr: deviceInfo.sysDescr || null
+        sysDescr: deviceInfo.sysDescr || null // Keep case as sysDescr for consistency in the app
       };
     } catch (err) {
       console.error("Error performing SNMP device discovery:", err);
@@ -55,6 +55,7 @@ export async function getDeviceInfoViaSNMP(
         make: null,
         model: null,
         category: null,
+        sysDescr: null,
         error: errorMessage
       };
     }
@@ -65,6 +66,7 @@ export async function getDeviceInfoViaSNMP(
       make: null,
       model: null,
       category: null,
+      sysDescr: null,
       error: error instanceof Error ? error.message : "Unknown error"
     };
   }
