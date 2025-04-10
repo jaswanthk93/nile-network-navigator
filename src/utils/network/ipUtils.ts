@@ -3,6 +3,8 @@
  * Network IP address utilities
  */
 
+import { OUI_DATABASE } from './deviceIdentification';
+
 // Helper function to parse CIDR notation and get IP information
 export function parseCIDR(cidr: string) {
   const [baseIP, mask] = cidr.split('/');
@@ -38,7 +40,7 @@ export function isInSameSubnet(ip1: string, ip2: string, maskBits: number): bool
 }
 
 // Calculate IP range for scanning based on subnet mask
-export function getIPRange(cidr: string): { startIP: string, endIP: string, totalIPs: number } {
+export function getIPRange(cidr: string): { startIP: string, endIP: string, totalIPs: number, baseIP: string, maskBits: number } {
   const { baseIP, maskBits } = parseCIDR(cidr);
   const ipLong = ipToLong(baseIP);
   
@@ -47,7 +49,9 @@ export function getIPRange(cidr: string): { startIP: string, endIP: string, tota
     return {
       startIP: baseIP,
       endIP: baseIP,
-      totalIPs: 1
+      totalIPs: 1,
+      baseIP,
+      maskBits
     };
   }
   
@@ -70,7 +74,9 @@ export function getIPRange(cidr: string): { startIP: string, endIP: string, tota
   return {
     startIP: longToIp(firstUsable),
     endIP: longToIp(lastUsable),
-    totalIPs: lastUsable - firstUsable + 1
+    totalIPs: lastUsable - firstUsable + 1,
+    baseIP,
+    maskBits
   };
 }
 
@@ -102,8 +108,6 @@ export function simulatePingAndARPLookup(ipAddress: string, localIP: string, sub
   const seed = ipNum % 1000;
   
   // Pick a random OUI from our database based on the seed
-  // Import the OUI_DATABASE from deviceIdentification module to maintain consistency
-  const { OUI_DATABASE } = require('./deviceIdentification');
   const ouis = Object.keys(OUI_DATABASE);
   const selectedOUI = ouis[seed % ouis.length].replace(/:/g, '');
   
