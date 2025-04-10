@@ -14,7 +14,8 @@ export * from './network/deviceIdentification';
 export * from './network/subnets';
 
 // Re-export the main functionality from the discovery module
-import { discoverDevicesInSubnet, saveDiscoveredDevices } from './network/discovery';
+import { discoverDevicesInSubnet } from './network/discovery';
+import { saveDiscoveredDevices } from './network/subnets';
 export { discoverDevicesInSubnet, saveDiscoveredDevices };
 
 // Log a deprecation warning when this file is imported

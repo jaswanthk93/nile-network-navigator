@@ -1,4 +1,3 @@
-
 /**
  * Network discovery core functionality
  */
@@ -370,6 +369,3 @@ export async function discoverDevicesInSubnet(
   updateProgress(`Scan complete. Found ${devices.length} devices.`, 100);
   return devices;
 }
-
-// Re-export saveDiscoveredDevices from the subnets module for backward compatibility
-export { saveDiscoveredDevices } from './subnets';
