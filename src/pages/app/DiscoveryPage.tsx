@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -9,11 +10,13 @@ import {
   AlertTriangleIcon, 
   WifiIcon, 
   ServerIcon,
-  AlertCircleIcon
+  AlertCircleIcon,
+  DatabaseIcon
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { discoverDevicesInSubnet, saveDiscoveredDevices } from "@/utils/networkDiscovery";
+import { checkBackendConnection } from "@/utils/backendConnection";
 
 interface DiscoveryStatus {
   status: "idle" | "scanning" | "connecting" | "gathering" | "complete" | "error";
@@ -21,6 +24,7 @@ interface DiscoveryStatus {
   message: string;
   devices: number;
   devicesNeedingVerification: number;
+  devicesByCategory?: Record<string, number>;
   error?: string;
 }
 
@@ -34,9 +38,33 @@ const DiscoveryPage = () => {
   });
   const [subnetsToScan, setSubnetsToScan] = useState<any[]>([]);
   const [currentSubnetIndex, setCurrentSubnetIndex] = useState(0);
+  const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  // Check backend connection on page load
+  useEffect(() => {
+    const verifyBackendConnection = async () => {
+      try {
+        const result = await checkBackendConnection();
+        setBackendConnected(result.connected);
+        
+        if (!result.connected) {
+          toast({
+            title: "Backend Not Connected",
+            description: "The backend agent is not connected. SNMP device discovery will be limited.",
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        console.error("Failed to check backend connection:", error);
+        setBackendConnected(false);
+      }
+    };
+    
+    verifyBackendConnection();
+  }, [toast]);
 
   useEffect(() => {
     const fetchSubnets = async () => {
@@ -127,6 +155,23 @@ const DiscoveryPage = () => {
       return;
     }
 
+    // Check backend connection status before starting
+    try {
+      const result = await checkBackendConnection();
+      setBackendConnected(result.connected);
+      
+      if (!result.connected) {
+        toast({
+          title: "Backend Not Connected",
+          description: "The backend agent is not connected. SNMP device discovery will be limited.",
+          variant: "warning",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to check backend connection:", error);
+      setBackendConnected(false);
+    }
+
     try {
       setDiscovery({
         status: "scanning",
@@ -168,12 +213,20 @@ const DiscoveryPage = () => {
         device.needs_verification === true
       ).length;
       
+      // Count devices by category
+      const devicesByCategory: Record<string, number> = {};
+      discoveredDevices.forEach(device => {
+        const category = device.category || 'Unknown';
+        devicesByCategory[category] = (devicesByCategory[category] || 0) + 1;
+      });
+      
       setDiscovery(prev => ({
         ...prev,
         status: "gathering",
         message: `Found ${discoveredDevices.length} devices on ${subnetsToScan[currentSubnetIndex].cidr}. Gathering information...`,
         devices: discoveredDevices.length,
         devicesNeedingVerification,
+        devicesByCategory,
         progress: 70
       }));
       
@@ -205,7 +258,8 @@ const DiscoveryPage = () => {
         progress: 100,
         message: `Discovery complete! Found ${discoveredDevices.length} device(s).`,
         devices: discoveredDevices.length,
-        devicesNeedingVerification
+        devicesNeedingVerification,
+        devicesByCategory
       });
       
       const toastMessage = devicesNeedingVerification > 0 
@@ -287,6 +341,18 @@ const DiscoveryPage = () => {
               ? "Ready to scan your network for devices" 
               : discovery.message}
           </CardDescription>
+          {backendConnected === false && (
+            <div className="mt-2 flex items-center gap-2 text-amber-600 text-sm">
+              <AlertCircleIcon className="h-4 w-4" />
+              <span>Backend agent not connected. SNMP discovery capabilities limited.</span>
+            </div>
+          )}
+          {backendConnected === true && (
+            <div className="mt-2 flex items-center gap-2 text-green-600 text-sm">
+              <DatabaseIcon className="h-4 w-4" />
+              <span>Backend agent connected. SNMP discovery available.</span>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -333,6 +399,16 @@ const DiscoveryPage = () => {
                   <h3 className="font-medium">Devices Found</h3>
                 </div>
                 <p className="mt-2 text-2xl font-bold">{discovery.devices}</p>
+                {discovery.devicesByCategory && discovery.status === "complete" && (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {Object.entries(discovery.devicesByCategory).map(([category, count]) => (
+                      <div key={category} className="flex justify-between">
+                        <span>{category}:</span>
+                        <span>{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="rounded-md border p-4">
                 <div className="flex items-center gap-2">
@@ -354,7 +430,7 @@ const DiscoveryPage = () => {
                   <h4 className="font-medium text-amber-700">Additional Information Needed</h4>
                   <p className="text-sm text-amber-600">
                     {discovery.devicesNeedingVerification} device(s) were discovered but have limited information. 
-                    This occurs when devices are in different subnets from your host, making MAC address detection impossible.
+                    This occurs when SNMP requests failed or devices are in different subnets from your host.
                   </p>
                 </div>
               </div>
