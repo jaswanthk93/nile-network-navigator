@@ -26,6 +26,7 @@ export async function saveDiscoveredDevices(
         user_id: userId,
         confirmed: device.confirmed || false,
         needs_verification: device.needs_verification || true,
+        // Fix the property name case mismatch - use lowercase for the database column
         sysdescr: device.sysDescr || null  // Convert the case here
       };
       
