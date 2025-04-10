@@ -74,6 +74,5 @@ export interface DeviceData {
   last_seen: string;
   needs_verification: boolean | null;
   confirmed: boolean | null;
-  sysDescr: string | null;
-  sysdescr: string | null;  // Include both cases to handle database inconsistencies
+  sysdescr: string | null;  // Only use lowercase version to match database
 }

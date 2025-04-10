@@ -26,7 +26,7 @@ export async function saveDiscoveredDevices(
         user_id: userId,
         confirmed: device.confirmed || false,
         needs_verification: device.needs_verification || true,
-        sysDescr: device.sysDescr || null
+        sysdescr: device.sysDescr || null  // Convert the case here
       };
       
       // Insert the device record

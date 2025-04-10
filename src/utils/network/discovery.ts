@@ -1,4 +1,3 @@
-
 /**
  * Network discovery core functionality
  */

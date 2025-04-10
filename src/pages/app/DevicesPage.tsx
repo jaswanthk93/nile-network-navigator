@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -65,7 +66,7 @@ const DevicesPage = () => {
         status: (device.status as "online" | "offline" | "unknown") || 'unknown',
         needsVerification: device.needs_verification || true,
         confirmed: device.confirmed || false,
-        sysDescr: device.sysDescr || device.sysdescr || ''
+        sysDescr: device.sysdescr || ''
       }));
       
       setDevices(transformedDevices);
