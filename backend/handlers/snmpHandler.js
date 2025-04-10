@@ -1,16 +1,11 @@
+
 const snmp = require('net-snmp');
+const vlanHandler = require('./vlanHandler');
+const deviceDiscovery = require('../utils/deviceDiscovery');
+const { isValidVlanId } = require('../utils/validation');
 
 // In-memory session store
 const sessions = {};
-
-// Constants for VLAN validation
-const MIN_VLAN_ID = 1;
-const MAX_VLAN_ID = 4094;
-
-// Helper function to validate VLAN IDs
-function isValidVlanId(vlanId) {
-  return vlanId >= MIN_VLAN_ID && vlanId <= MAX_VLAN_ID;
-}
 
 /**
  * Create an SNMP session
@@ -214,87 +209,12 @@ exports.discoverDevice = async (req, res) => {
       return res.status(400).json({ error: 'IP address is required' });
     }
     
-    // Create a temporary session for discovery
-    const snmpVersion = version === '1' ? snmp.Version1 : snmp.Version2c;
-    const session = snmp.createSession(ip, community, {
-      version: snmpVersion,
-      retries: 1,
-      timeout: 5000
+    const deviceInfo = await deviceDiscovery.discoverDeviceInfo(ip, community, version);
+    
+    res.json({ 
+      status: 'success',
+      device: deviceInfo
     });
-    
-    // Key OIDs for device identification
-    const oids = [
-      "1.3.6.1.2.1.1.1.0",  // sysDescr
-      "1.3.6.1.2.1.1.2.0",  // sysObjectID
-      "1.3.6.1.2.1.1.5.0",  // sysName
-      "1.3.6.1.2.1.1.6.0",  // sysLocation
-    ];
-    
-    // Get system information
-    const deviceInfo = {};
-    
-    try {
-      await new Promise((resolve, reject) => {
-        session.get(oids, (error, varbinds) => {
-          if (error) {
-            return reject(error);
-          }
-          
-          for (let i = 0; i < varbinds.length; i++) {
-            if (snmp.isVarbindError(varbinds[i])) {
-              console.warn(`Error for OID ${oids[i]}: ${snmp.varbindError(varbinds[i])}`);
-              continue;
-            }
-            
-            const value = varbinds[i].value;
-            let parsedValue = null;
-            
-            if (Buffer.isBuffer(value)) {
-              parsedValue = value.toString();
-            } else {
-              parsedValue = value;
-            }
-            
-            // Store in deviceInfo
-            switch (varbinds[i].oid) {
-              case "1.3.6.1.2.1.1.1.0":
-                deviceInfo.sysDescr = parsedValue;
-                break;
-              case "1.3.6.1.2.1.1.2.0":
-                deviceInfo.sysObjectID = parsedValue;
-                break;
-              case "1.3.6.1.2.1.1.5.0":
-                deviceInfo.sysName = parsedValue;
-                break;
-              case "1.3.6.1.2.1.1.6.0":
-                deviceInfo.sysLocation = parsedValue;
-                break;
-            }
-          }
-          
-          resolve();
-        });
-      });
-      
-      // Identify device manufacturer and type
-      deviceInfo.manufacturer = getManufacturerFromOID(deviceInfo.sysObjectID);
-      deviceInfo.model = parseModelFromSNMP(deviceInfo.sysDescr, deviceInfo.manufacturer);
-      deviceInfo.type = determineDeviceTypeFromSNMP(deviceInfo.sysDescr, deviceInfo.sysObjectID);
-      
-      res.json({ 
-        status: 'success',
-        device: deviceInfo
-      });
-    } catch (snmpError) {
-      console.error('SNMP discovery error:', snmpError);
-      res.status(500).json({ 
-        status: 'error',
-        error: snmpError.message,
-        message: 'Failed to retrieve device information via SNMP'
-      });
-    } finally {
-      session.close();
-    }
   } catch (error) {
     console.error('SNMP device discovery error:', error);
     res.status(500).json({ error: error.message });
@@ -312,214 +232,19 @@ exports.discoverVlans = async (req, res) => {
       return res.status(400).json({ error: 'IP address is required' });
     }
     
-    logger.info(`[SNMP] Discovering VLANs from ${ip} using community ${community} (v${version})`);
+    const result = await vlanHandler.discoverVlans(ip, community, version, make);
     
-    // Always use Cisco-specific OIDs for VLAN state and name
-    const vlanOids = {
-      vlanList: "1.3.6.1.4.1.9.9.46.1.3.1.1.2", // CISCO-VTP-MIB::vtpVlanState
-      vlanName: "1.3.6.1.4.1.9.9.46.1.3.1.1.4", // CISCO-VTP-MIB::vtpVlanName
-    };
-    
-    // Create temporary session
-    const snmpVersion = version === '1' ? snmp.Version1 : snmp.Version2c;
-    const session = snmp.createSession(ip, community, {
-      version: snmpVersion,
-      retries: 1,
-      timeout: 5000
-    });
-    
-    const vlans = [];
-    const invalidVlans = [];
-    
-    // Walk through VLAN state OID to get VLAN IDs
-    // From output: SNMPv2-SMI::enterprises.9.9.46.1.3.1.1.2.1.XXX = INTEGER: 1
-    // Where XXX is the VLAN ID and 1 indicates operational state
-    await new Promise((resolve, reject) => {
-      logger.info(`[SNMP] Walking VLAN state OID ${vlanOids.vlanList} on ${ip}`);
-      session.walk(vlanOids.vlanList, (varbinds) => {
-        for (const varbind of varbinds) {
-          if (!snmp.isVarbindError(varbind)) {
-            const oidParts = varbind.oid.split('.');
-            const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
-            
-            // Parse the state value (1 = operational, 2 = suspended, etc.)
-            let stateValue = 0;
-            if (Buffer.isBuffer(varbind.value)) {
-              stateValue = parseInt(varbind.value.toString(), 10);
-            } else if (typeof varbind.value === 'number') {
-              stateValue = varbind.value;
-            }
-            
-            if (!isNaN(vlanId)) {
-              if (isValidVlanId(vlanId)) {
-                logger.info(`[SNMP] Found VLAN ${vlanId} with state ${stateValue} on ${ip}`);
-                vlans.push({
-                  vlanId,
-                  name: `VLAN${vlanId}`, // Default name, will be updated
-                  state: stateValue === 1 ? 'active' : 'suspended',
-                  usedBy: [ip]
-                });
-              } else {
-                logger.warn(`[SNMP] Invalid VLAN ID ${vlanId} discovered from ${ip} (outside range ${MIN_VLAN_ID}-${MAX_VLAN_ID})`);
-                invalidVlans.push({
-                  vlanId,
-                  name: `VLAN${vlanId}`,
-                  state: stateValue === 1 ? 'active' : 'suspended',
-                  usedBy: [ip]
-                });
-              }
-            }
-          }
-        }
-      }, (error) => {
-        if (error) {
-          logger.error(`[SNMP] Error walking VLAN list on ${ip}:`, error);
-          reject(error);
-        } else {
-          logger.info(`[SNMP] Found ${vlans.length} valid VLANs and ${invalidVlans.length} invalid VLANs on ${ip}`);
-          resolve();
-        }
-      });
-    });
-    
-    // Get VLAN names from the VLAN name OID
-    // From output: SNMPv2-SMI::enterprises.9.9.46.1.3.1.1.4.1.XXX = STRING: "VLAN_NAME"
-    // Where XXX is the VLAN ID and "VLAN_NAME" is the name string
-    if (vlans.length > 0) {
-      await new Promise((resolve, reject) => {
-        logger.info(`[SNMP] Walking VLAN name OID ${vlanOids.vlanName} on ${ip}`);
-        session.walk(vlanOids.vlanName, (varbinds) => {
-          for (const varbind of varbinds) {
-            if (!snmp.isVarbindError(varbind)) {
-              const oidParts = varbind.oid.split('.');
-              const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
-              
-              if (!isNaN(vlanId)) {
-                // Find the VLAN in our list
-                const vlan = vlans.find(v => v.vlanId === vlanId);
-                if (vlan && Buffer.isBuffer(varbind.value)) {
-                  vlan.name = varbind.value.toString().trim();
-                  logger.info(`[SNMP] VLAN ${vlanId} name: ${vlan.name}`);
-                }
-              }
-            }
-          }
-        }, (error) => {
-          if (error) {
-            logger.error(`[SNMP] Error walking VLAN names on ${ip}:`, error);
-            reject(error);
-          } else {
-            resolve();
-          }
-        });
-      });
-    }
-    
-    // Close session
-    session.close();
-    
-    res.json({ 
-      vlans,
-      invalidVlans,
-      totalDiscovered: vlans.length + invalidVlans.length,
-      validCount: vlans.length,
-      invalidCount: invalidVlans.length
-    });
+    res.json(result);
   } catch (error) {
-    logger.error('SNMP VLAN discovery error:', error);
+    console.error('SNMP VLAN discovery error:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
-// Helper function to get manufacturer from sysObjectID
-function getManufacturerFromOID(sysObjectID) {
-  if (!sysObjectID) return null;
-  
-  const OID_MANUFACTURER_MAP = {
-    "1.3.6.1.4.1.9.": "Cisco",
-    "1.3.6.1.4.1.2636.": "Juniper",
-    "1.3.6.1.4.1.4526.": "Aruba",
-    "1.3.6.1.4.1.11.": "HP",
-    "1.3.6.1.4.1.171.": "D-Link",
-    "1.3.6.1.4.1.1916.": "Extreme",
-    "1.3.6.1.4.1.6889.": "Avaya",
-    "1.3.6.1.4.1.890.": "Zyxel",
-    "1.3.6.1.4.1.3375.": "F5",
-    "1.3.6.1.4.1.12356.": "Fortinet",
-    "1.3.6.1.4.1.14988.": "Mikrotik",
-    "1.3.6.1.4.1.25461.": "Palo Alto",
-    "1.3.6.1.4.1.1991.": "Brocade",
-  };
-  
-  for (const [oidPrefix, manufacturer] of Object.entries(OID_MANUFACTURER_MAP)) {
-    if (sysObjectID.startsWith(oidPrefix)) {
-      return manufacturer;
-    }
-  }
-  
-  return null;
-}
-
-// Helper function to parse model information from sysDescr
-function parseModelFromSNMP(sysDescr, manufacturer) {
-  if (!sysDescr) return null;
-  
-  if (manufacturer === "Cisco") {
-    // Extract model from Cisco descriptions like "Cisco IOS Software, C2960 Software..."
-    const ciscoModelRegex = /C\d+|CSR\d+|ASR\d+|ISR\d+|Nexus \d+|WS-\w+/i;
-    const match = sysDescr.match(ciscoModelRegex);
-    return match ? match[0] : null;
-  } else if (manufacturer === "Juniper") {
-    // Extract model from Juniper descriptions
-    const juniperModelRegex = /srx\d+|ex\d+|mx\d+|qfx\d+/i;
-    const match = sysDescr.match(juniperModelRegex);
-    return match ? match[0].toUpperCase() : null;
-  } else if (manufacturer === "HP" || manufacturer === "Aruba") {
-    // Extract model from HP descriptions
-    const hpModelRegex = /\b[A-Z]\d{4}[A-Z]?\b|\bJ\d{4}[A-Z]\b/;
-    const match = sysDescr.match(hpModelRegex);
-    return match ? match[0] : null;
-  }
-  
-  // Generic fallback - try to find any model-like pattern
-  const genericModelRegex = /[A-Z0-9]+-[A-Z0-9]+/;
-  const match = sysDescr.match(genericModelRegex);
-  return match ? match[0] : null;
-}
-
-// Helper function to determine device type from SNMP
-function determineDeviceTypeFromSNMP(sysDescr, sysObjectID) {
-  // First check based on sysObjectID which is often most reliable
-  if (sysObjectID) {
-    if (sysObjectID.includes("1.3.6.1.4.1.9.1.516") || 
-        sysObjectID.includes("1.3.6.1.4.1.9.1.1745")) return "Switch";
-    if (sysObjectID.includes("1.3.6.1.4.1.9.1.525") || 
-        sysObjectID.includes("1.3.6.1.4.1.9.1.1639")) return "Router";
-    if (sysObjectID.includes("1.3.6.1.4.1.9.1.525")) return "AP";
-    if (sysObjectID.includes("1.3.6.1.4.1.9.1.1250") || 
-        sysObjectID.includes("1.3.6.1.4.1.12356.101.1")) return "Firewall";
-  }
-
-  // Then check based on sysDescr text patterns
-  if (sysDescr) {
-    const descLower = sysDescr.toLowerCase();
-    if (descLower.includes("switch") || 
-        descLower.includes("catalyst") || 
-        descLower.includes("nexus")) return "Switch";
-    if (descLower.includes("router") || 
-        descLower.includes("isr") || 
-        descLower.includes("asr")) return "Router";
-    if (descLower.includes("wireless") || 
-        descLower.includes("access point") || 
-        descLower.includes("aironet")) return "AP";
-    if (descLower.includes("firewall") || 
-        descLower.includes("asa") || 
-        descLower.includes("fortigate")) return "Firewall";
-    if (descLower.includes("controller")) return "Controller";
-  }
-
-  return "Other";
-}
+// Helper function to access the session store - for testing/debugging
+exports.getSessionCount = () => {
+  return Object.keys(sessions).length;
+};
 
 // Cleanup old sessions periodically
 setInterval(() => {
