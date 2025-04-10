@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -43,7 +42,6 @@ const DiscoveryPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Check backend connection on page load
   useEffect(() => {
     const verifyBackendConnection = async () => {
       try {
@@ -155,7 +153,6 @@ const DiscoveryPage = () => {
       return;
     }
 
-    // Check backend connection status before starting
     try {
       const result = await checkBackendConnection();
       setBackendConnected(result.connected);
@@ -163,8 +160,8 @@ const DiscoveryPage = () => {
       if (!result.connected) {
         toast({
           title: "Backend Not Connected",
-          description: "The backend agent is not connected. SNMP device discovery will be limited.",
-          variant: "warning",
+          description: "The backend agent is not connected. SNMP discovery capabilities will be limited.",
+          variant: "default",
         });
       }
     } catch (error) {
@@ -213,7 +210,6 @@ const DiscoveryPage = () => {
         device.needs_verification === true
       ).length;
       
-      // Count devices by category
       const devicesByCategory: Record<string, number> = {};
       discoveredDevices.forEach(device => {
         const category = device.category || 'Unknown';
