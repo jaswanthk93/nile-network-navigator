@@ -12,6 +12,7 @@ export type Database = {
       devices: {
         Row: {
           category: string | null
+          confirmed: boolean | null
           created_at: string
           hostname: string | null
           id: string
@@ -20,13 +21,16 @@ export type Database = {
           mac_address: string | null
           make: string | null
           model: string | null
+          needs_verification: boolean | null
           site_id: string
           status: string | null
           subnet_id: string
+          sysdescr: string | null
           user_id: string
         }
         Insert: {
           category?: string | null
+          confirmed?: boolean | null
           created_at?: string
           hostname?: string | null
           id?: string
@@ -35,13 +39,16 @@ export type Database = {
           mac_address?: string | null
           make?: string | null
           model?: string | null
+          needs_verification?: boolean | null
           site_id: string
           status?: string | null
           subnet_id: string
+          sysdescr?: string | null
           user_id: string
         }
         Update: {
           category?: string | null
+          confirmed?: boolean | null
           created_at?: string
           hostname?: string | null
           id?: string
@@ -50,9 +57,11 @@ export type Database = {
           mac_address?: string | null
           make?: string | null
           model?: string | null
+          needs_verification?: boolean | null
           site_id?: string
           status?: string | null
           subnet_id?: string
+          sysdescr?: string | null
           user_id?: string
         }
         Relationships: [

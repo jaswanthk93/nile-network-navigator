@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
-import { MonitorIcon, SearchIcon, ServerIcon, WifiIcon, RouterIcon, PrinterIcon } from "lucide-react";
+import { MonitorIcon, SearchIcon, ServerIcon, WifiIcon, RouterIcon, PrinterIcon, AlertCircleIcon, CheckCircleIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -19,6 +19,9 @@ interface Device {
   model: string;
   category: "AP" | "Switch" | "Controller" | "Router" | "Other";
   status: "online" | "offline" | "unknown";
+  needsVerification: boolean;
+  confirmed: boolean;
+  sysDescr?: string;
 }
 
 const DevicesPage = () => {
@@ -61,7 +64,10 @@ const DevicesPage = () => {
         make: device.make || '',
         model: device.model || '',
         category: (device.category as "AP" | "Switch" | "Controller" | "Router" | "Other") || 'Other',
-        status: (device.status as "online" | "offline" | "unknown") || 'unknown'
+        status: (device.status as "online" | "offline" | "unknown") || 'unknown',
+        needsVerification: device.needs_verification || true,
+        confirmed: device.confirmed || false,
+        sysDescr: device.sysDescr || device.sysdescr || ''
       }));
       
       setDevices(transformedDevices);
@@ -98,12 +104,27 @@ const DevicesPage = () => {
       // Update the database
       const { error } = await supabase
         .from('devices')
-        .update({ [fieldMapping[field]]: value })
+        .update({ 
+          [fieldMapping[field]]: value,
+          // When user edits a field, mark the device as confirmed
+          confirmed: true,
+          needs_verification: false
+        })
         .eq('id', id);
       
       if (error) {
         throw error;
       }
+      
+      // Also update the local state for confirmation status
+      setDevices(devices.map(device => 
+        device.id === id ? { 
+          ...device, 
+          [field]: value,
+          confirmed: true,
+          needsVerification: false
+        } : device
+      ));
       
       toast({
         title: "Device updated",
@@ -136,12 +157,42 @@ const DevicesPage = () => {
     }
   };
 
-  const handleConfirmDevices = () => {
-    toast({
-      title: "Devices confirmed",
-      description: "Device information has been saved.",
-    });
-    navigate("/vlans");
+  const handleConfirmDevices = async () => {
+    try {
+      // Update all devices to mark them as confirmed
+      const { error } = await supabase
+        .from('devices')
+        .update({ 
+          confirmed: true,
+          needs_verification: false 
+        })
+        .in('id', devices.map(d => d.id));
+        
+      if (error) {
+        throw error;
+      }
+      
+      // Update local state
+      setDevices(devices.map(device => ({
+        ...device,
+        confirmed: true,
+        needsVerification: false
+      })));
+      
+      toast({
+        title: "Devices confirmed",
+        description: "All device information has been saved.",
+      });
+      
+      navigate("/vlans");
+    } catch (error) {
+      console.error('Error confirming devices:', error);
+      toast({
+        title: "Confirmation failed",
+        description: "Failed to confirm device information.",
+        variant: "destructive",
+      });
+    }
   };
 
   if (isLoading) {
@@ -170,6 +221,13 @@ const DevicesPage = () => {
           <CardDescription>
             Verify device information and make corrections if needed
           </CardDescription>
+          
+          {devices.some(d => d.needsVerification) && (
+            <div className="mt-2 text-amber-600 text-sm flex items-center gap-2">
+              <AlertCircleIcon className="h-4 w-4" />
+              <span>Some devices need verification. Please review and confirm their details.</span>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between space-x-2 pb-4">
@@ -212,13 +270,14 @@ const DevicesPage = () => {
                   <TableHead>Make</TableHead>
                   <TableHead>Model</TableHead>
                   <TableHead>Category</TableHead>
-                  <TableHead className="w-[100px]">Status</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-[80px] text-center">Verified</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredDevices.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-4 text-muted-foreground">
                       {devices.length === 0 
                         ? "No devices discovered yet. Run a network discovery first." 
                         : "No devices found matching filter criteria"}
@@ -226,7 +285,7 @@ const DevicesPage = () => {
                   </TableRow>
                 ) : (
                   filteredDevices.map((device) => (
-                    <TableRow key={device.id}>
+                    <TableRow key={device.id} className={device.needsVerification ? "bg-amber-50" : ""}>
                       <TableCell>{device.ipAddress}</TableCell>
                       <TableCell>
                         {editingId === `${device.id}-hostname` ? (
@@ -335,6 +394,13 @@ const DevicesPage = () => {
                         }`}>
                           {device.status}
                         </span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {device.confirmed ? (
+                          <CheckCircleIcon className="h-5 w-5 text-green-500 mx-auto" />
+                        ) : (
+                          <AlertCircleIcon className="h-5 w-5 text-amber-500 mx-auto" />
+                        )}
                       </TableCell>
                     </TableRow>
                   ))

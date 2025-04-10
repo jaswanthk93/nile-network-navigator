@@ -23,7 +23,10 @@ export async function saveDiscoveredDevices(
         ...device,
         site_id: siteId,
         subnet_id: subnetId,
-        user_id: userId
+        user_id: userId,
+        confirmed: device.confirmed || false,
+        needs_verification: device.needs_verification || true,
+        sysDescr: device.sysDescr || null
       };
       
       // Insert the device record
