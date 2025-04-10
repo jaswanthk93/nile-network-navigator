@@ -1,0 +1,97 @@
+
+import { DiscoveredVlan } from "../types/network";
+
+// Configuration for the agent
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001/api"; // Use env var if available
+
+/**
+ * Handles API requests to the backend agent
+ */
+export async function callBackendApi<T = any>(endpoint: string, data: any): Promise<T> {
+  try {
+    console.log(`Calling backend API: ${endpoint} with data:`, data);
+    
+    const response = await fetch(`${BACKEND_URL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API error (${response.status}): ${errorText}`);
+    }
+    
+    const result = await response.json();
+    console.log(`Backend API response from ${endpoint}:`, result);
+    return result;
+  } catch (error) {
+    console.error(`Error calling ${endpoint}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Execute SNMP queries on a connected switch
+ */
+export async function executeSnmpQueries(
+  sessionId: string,
+  oids: string[]
+): Promise<Record<string, any> | null> {
+  try {
+    console.log(`Executing SNMP queries on session ${sessionId}...`);
+    
+    const result = await callBackendApi("/snmp/get", {
+      sessionId,
+      oids
+    });
+    
+    return result.results;
+  } catch (error) {
+    console.error("Error executing SNMP queries:", error);
+    return null;
+  }
+}
+
+/**
+ * Execute SNMP WALK on a connected switch
+ */
+export async function executeSnmpWalk(
+  sessionId: string,
+  oid: string
+): Promise<Record<string, any> | null> {
+  try {
+    console.log(`Executing SNMP WALK on session ${sessionId} for OID ${oid}...`);
+    
+    const result = await callBackendApi("/snmp/walk", {
+      sessionId,
+      oid
+    });
+    
+    return result.results;
+  } catch (error) {
+    console.error("Error executing SNMP WALK:", error);
+    return null;
+  }
+}
+
+/**
+ * Disconnect a session (SSH/Telnet)
+ */
+export async function disconnectSession(
+  sessionId: string,
+  method: "ssh" | "telnet"
+): Promise<boolean> {
+  try {
+    const endpoint = `/${method}/disconnect`;
+    await callBackendApi(endpoint, {
+      sessionId
+    });
+    return true;
+  } catch (error) {
+    console.error(`Error disconnecting ${method} session:`, error);
+    return false;
+  }
+}
