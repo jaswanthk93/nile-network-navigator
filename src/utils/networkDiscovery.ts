@@ -676,7 +676,6 @@ export async function discoverDevicesInSubnet(
         category: "Unknown",
         make: null,
         model: null,
-        os_version: null,
         last_seen: new Date().toISOString()
       };
       
