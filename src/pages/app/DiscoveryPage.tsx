@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -153,9 +154,11 @@ const DiscoveryPage = () => {
       return;
     }
 
+    // Ensure we have the latest backend connection status before starting
     try {
       const result = await checkBackendConnection();
       setBackendConnected(result.connected);
+      console.log("Backend connection status:", result.connected ? "Connected" : "Not connected");
       
       if (!result.connected) {
         toast({
@@ -201,9 +204,12 @@ const DiscoveryPage = () => {
         message: `Scanning subnet ${subnetsToScan[currentSubnetIndex].cidr}...`,
       }));
       
+      // Pass the backend connection status to the discovery function
+      console.log("Starting discovery with backend connected:", backendConnected);
       const discoveredDevices = await discoverDevicesInSubnet(
         subnetsToScan[currentSubnetIndex].cidr,
-        updateDiscoveryProgress
+        updateDiscoveryProgress,
+        backendConnected === true
       );
       
       const devicesNeedingVerification = discoveredDevices.filter(device => 

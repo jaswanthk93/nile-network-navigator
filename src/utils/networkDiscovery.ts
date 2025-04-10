@@ -24,6 +24,58 @@ function isInSameSubnet(ip1: string, ip2: string, maskBits: number): boolean {
   return (ip1Long & mask) === (ip2Long & mask);
 }
 
+// Calculate IP range for scanning based on subnet mask
+function getIPRange(cidr: string): { startIP: string, endIP: string, totalIPs: number } {
+  const { baseIP, maskBits } = parseCIDR(cidr);
+  const ipLong = ipToLong(baseIP);
+  
+  // For /32, we should only scan the exact IP
+  if (maskBits === 32) {
+    return {
+      startIP: baseIP,
+      endIP: baseIP,
+      totalIPs: 1
+    };
+  }
+  
+  // For other subnets, calculate the range
+  const hostBits = 32 - maskBits;
+  const netmask = ~((1 << hostBits) - 1) >>> 0;
+  const network = ipLong & netmask;
+  const broadcast = network | ((1 << hostBits) - 1);
+  
+  // Calculate usable range (excluding network and broadcast for traditional subnets)
+  let firstUsable = network;
+  let lastUsable = broadcast;
+  
+  // For normal subnets (not /31 or /32), exclude network and broadcast addresses
+  if (maskBits < 31) {
+    firstUsable = network + 1;
+    lastUsable = broadcast - 1;
+  }
+  
+  // Convert back to IP strings
+  const startIP = [
+    (firstUsable >>> 24) & 255,
+    (firstUsable >>> 16) & 255,
+    (firstUsable >>> 8) & 255,
+    firstUsable & 255
+  ].join('.');
+  
+  const endIP = [
+    (lastUsable >>> 24) & 255,
+    (lastUsable >>> 16) & 255,
+    (lastUsable >>> 8) & 255,
+    lastUsable & 255
+  ].join('.');
+  
+  return {
+    startIP,
+    endIP,
+    totalIPs: lastUsable - firstUsable + 1
+  };
+}
+
 // SNMP OIDs for device information
 const SNMP_OIDS = {
   sysDescr: "1.3.6.1.2.1.1.1.0",
@@ -582,10 +634,11 @@ function parseModelFromSNMP(sysDescr: string, manufacturer: string | null): stri
   return match ? match[0] : null;
 }
 
-// Use SNMP to get device information
+// Use SNMP to get device information - now prefers real backend connection over simulation
 async function getDeviceInfoViaSNMP(
   ipAddress: string, 
-  updateProgress: (message: string, progress: number) => void
+  updateProgress: (message: string, progress: number) => void,
+  useBackendConnection: boolean
 ): Promise<{
   hostname: string | null;
   make: string | null;
@@ -595,8 +648,66 @@ async function getDeviceInfoViaSNMP(
   try {
     updateProgress(`Retrieving SNMP information from ${ipAddress}...`, 1);
     
+    // If backend connection is available, use it for real SNMP data
+    if (useBackendConnection) {
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const response = await fetch(`${backendUrl}/api/snmp/get`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            target: ipAddress,
+            oids: [
+              "1.3.6.1.2.1.1.1.0", // sysDescr
+              "1.3.6.1.2.1.1.5.0", // sysName
+              "1.3.6.1.2.1.1.2.0"  // sysObjectID
+            ]
+          }),
+          signal: AbortSignal.timeout(5000), // 5 second timeout
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            console.log("Real SNMP data received:", data);
+            updateProgress(`SNMP information retrieved from ${ipAddress}`, 3);
+            
+            // Parse the real SNMP data
+            const sysDescr = data.results["1.3.6.1.2.1.1.1.0"] || '';
+            const sysName = data.results["1.3.6.1.2.1.1.5.0"] || null;
+            const sysObjectID = data.results["1.3.6.1.2.1.1.2.0"] || '';
+            
+            // Extract manufacturer from OID
+            const make = getManufacturerFromOID(sysObjectID);
+            
+            // Extract model from system description
+            const model = parseModelFromSNMP(sysDescr, make);
+            
+            // Determine device type/category
+            const category = determineDeviceTypeFromSNMP(sysDescr, sysObjectID);
+            
+            return {
+              hostname: sysName,
+              make,
+              model,
+              category
+            };
+          }
+        }
+        
+        console.warn("Backend request failed, falling back to simulation");
+      } catch (err) {
+        console.error("Error connecting to backend:", err);
+        console.warn("Backend request failed, falling back to simulation");
+      }
+    }
+    
+    // Fallback to simulation if backend is not available or request failed
     // In a real implementation, we would use actual SNMP queries
     // For now, we'll simulate this with some sample data
+    console.log("Using simulated SNMP data for", ipAddress);
     const sysName = `Device-${ipAddress.split('.').join('-')}`;
     const sysDescr = `Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.0(2)SE, RELEASE SOFTWARE (fc1)`;
     const sysObjectID = "1.3.6.1.4.1.9.1.716"; // Cisco 2960
@@ -632,31 +743,175 @@ async function getDeviceInfoViaSNMP(
 // Function to discover devices in a subnet and gather information about them
 export async function discoverDevicesInSubnet(
   cidr: string,
-  updateProgress: (message: string, progress: number) => void
+  updateProgress: (message: string, progress: number) => void,
+  backendConnected: boolean = false
 ): Promise<any[]> {
   const devices: any[] = [];
   const { baseIP, maskBits } = parseCIDR(cidr);
   
-  // Parse the base IP components and calculate network range
-  const ipParts = baseIP.split('.');
-  const ipPrefix = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}`;
+  // Get IP range based on subnet mask
+  const { startIP, endIP, totalIPs } = getIPRange(cidr);
   
   // Get our local IP address for subnet calculation
   // In browser, we can't directly get the client's IP, so we'll use the base IP as a proxy
   const localIP = baseIP;
   
-  // We'll scan a limited range in the last octet (1-254) to avoid timeouts
-  // In a real implementation, this would be more comprehensive
-  const startRange = 1;
-  const endRange = 254;
-  const ipCount = endRange - startRange + 1;
-  let scannedCount = 0;
+  // For /32 subnets, we only need to scan the exact IP
+  if (maskBits === 32) {
+    updateProgress(`Beginning scan of host ${baseIP}...`, 0);
+    
+    // For a /32, just check the single IP
+    const ipAddress = baseIP;
+    updateProgress(`Scanning ${ipAddress}...`, 20);
+    
+    // Check if device responds to ping
+    const pingResult = simulatePingAndARPLookup(ipAddress, localIP, maskBits);
+    
+    if (pingResult.reachable) {
+      // Basic device info
+      const newDevice: any = {
+        ip_address: ipAddress,
+        hostname: null,
+        mac_address: pingResult.macAddress,
+        needs_verification: false,
+        category: "Unknown",
+        make: null,
+        model: null,
+        last_seen: new Date().toISOString()
+      };
+      
+      // If we have a MAC address, try to identify the manufacturer
+      if (pingResult.macAddress) {
+        newDevice.make = identifyDeviceFromMAC(pingResult.macAddress);
+      }
+      
+      // If we can guess the category based on MAC or IP, do so
+      if (newDevice.make) {
+        newDevice.category = determineDeviceType(ipAddress, newDevice.make);
+      } else {
+        newDevice.category = determineDeviceType(ipAddress);
+      }
+      
+      // Check if we can get additional info via SNMP
+      try {
+        updateProgress(`Getting SNMP information from ${ipAddress}...`, 40);
+        const snmpInfo = await getDeviceInfoViaSNMP(ipAddress, updateProgress, backendConnected);
+        
+        if (snmpInfo.hostname) {
+          newDevice.hostname = snmpInfo.hostname;
+        }
+        
+        if (snmpInfo.make) {
+          newDevice.make = snmpInfo.make;
+        }
+        
+        if (snmpInfo.model) {
+          newDevice.model = snmpInfo.model;
+        }
+        
+        if (snmpInfo.category) {
+          newDevice.category = snmpInfo.category;
+        }
+      } catch (error) {
+        console.warn(`SNMP information retrieval failed for ${ipAddress}:`, error);
+        newDevice.needs_verification = true;
+      }
+      
+      // If we're missing key information, mark for verification
+      if (!newDevice.make || !newDevice.model || !newDevice.hostname) {
+        newDevice.needs_verification = true;
+      }
+      
+      devices.push(newDevice);
+    }
+    
+    updateProgress(`Scan complete. Found ${devices.length} device(s).`, 100);
+    return devices;
+  }
   
+  // For normal subnets, scan the range
   updateProgress(`Beginning scan of subnet ${cidr}...`, 0);
   
-  for (let i = startRange; i <= endRange; i++) {
-    const ipAddress = `${ipPrefix}.${i}`;
+  // Parse the IP octets
+  const startOctets = startIP.split('.').map(Number);
+  const endOctets = endIP.split('.').map(Number);
+  
+  // For practical reasons, limit scanning to manageable ranges
+  // If the subnet is too large, we'll sample it instead of scanning everything
+  const maxIPsToScan = 254; // Maximum IPs to scan for performance
+  let ipCount = totalIPs;
+  let ipsToScan: string[] = [];
+  
+  // If there are too many IPs, create a representative sample
+  if (totalIPs > maxIPsToScan && maskBits < 24) {
+    console.log(`Subnet ${cidr} contains ${totalIPs} IPs, sampling ${maxIPsToScan}`);
+    // Sample strategy: take evenly distributed IPs
+    const step = Math.max(1, Math.floor(totalIPs / maxIPsToScan));
     
+    // Start at network address + 1 (or network address for /31, /32)
+    let currentIP = ipToLong(startIP);
+    const maxIP = ipToLong(endIP);
+    
+    while (currentIP <= maxIP && ipsToScan.length < maxIPsToScan) {
+      const ipStr = [
+        (currentIP >>> 24) & 255,
+        (currentIP >>> 16) & 255,
+        (currentIP >>> 8) & 255,
+        currentIP & 255
+      ].join('.');
+      
+      ipsToScan.push(ipStr);
+      currentIP += step;
+    }
+    
+    ipCount = ipsToScan.length;
+  } else {
+    // For smaller subnets, scan all IPs
+    // Generate all IPs in the range
+    if (maskBits >= 24) {
+      // For /24 or smaller subnets, just iterate over the last octet
+      const subnet = startOctets.slice(0, 3).join('.');
+      for (let i = startOctets[3]; i <= endOctets[3]; i++) {
+        ipsToScan.push(`${subnet}.${i}`);
+      }
+    } else if (maskBits >= 16) {
+      // For /16-/23 subnets, iterate over last two octets
+      const subnet = startOctets.slice(0, 2).join('.');
+      for (let i = startOctets[2]; i <= endOctets[2]; i++) {
+        for (let j = (i === startOctets[2] ? startOctets[3] : 0); 
+             j <= (i === endOctets[2] ? endOctets[3] : 255); j++) {
+          ipsToScan.push(`${subnet}.${i}.${j}`);
+          if (ipsToScan.length >= maxIPsToScan) break;
+        }
+        if (ipsToScan.length >= maxIPsToScan) break;
+      }
+    } else {
+      // For very large subnets, just sample
+      console.log(`Subnet ${cidr} is too large, sampling ${maxIPsToScan} IPs`);
+      ipsToScan = [startIP, endIP]; // Just scan start and end as a minimum
+      const step = Math.max(1, Math.floor(totalIPs / maxIPsToScan));
+      let currentIP = ipToLong(startIP) + step;
+      
+      while (ipsToScan.length < maxIPsToScan && currentIP < ipToLong(endIP)) {
+        const ipStr = [
+          (currentIP >>> 24) & 255,
+          (currentIP >>> 16) & 255,
+          (currentIP >>> 8) & 255,
+          currentIP & 255
+        ].join('.');
+        
+        ipsToScan.push(ipStr);
+        currentIP += step;
+      }
+    }
+    
+    ipCount = ipsToScan.length;
+  }
+  
+  console.log(`Will scan ${ipCount} IPs in subnet ${cidr}`);
+  let scannedCount = 0;
+  
+  for (const ipAddress of ipsToScan) {
     // Calculate percentage progress
     const progress = Math.floor((scannedCount / ipCount) * 100);
     
@@ -694,7 +949,7 @@ export async function discoverDevicesInSubnet(
       // Check if we can get additional info via SNMP
       // This should only be used when we have a backend agent capable of SNMP
       try {
-        const snmpInfo = await getDeviceInfoViaSNMP(ipAddress, updateProgress);
+        const snmpInfo = await getDeviceInfoViaSNMP(ipAddress, updateProgress, backendConnected);
         
         if (snmpInfo.hostname) {
           newDevice.hostname = snmpInfo.hostname;
