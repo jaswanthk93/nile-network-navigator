@@ -1,3 +1,4 @@
+
 /**
  * Network discovery core functionality
  */
@@ -5,17 +6,11 @@
 import { supabase } from "@/integrations/supabase/client";
 import { SubnetData } from "@/types/network";
 import { getIPRange, simulatePingAndARPLookup, parseCIDR } from './ipUtils';
-import { 
-  identifyDeviceFromMAC, 
-  determineDeviceType, 
-  getManufacturerFromOID,
-  parseModelFromSNMP,
-  determineDeviceTypeFromSNMP,
-  SNMP_OIDS
-} from './deviceIdentification';
+import { discoverDeviceWithSNMP } from "@/utils/apiClient";
+import { SNMP_OIDS } from './deviceIdentification';
 
 /**
- * Use SNMP to get device information - enforces real backend connection
+ * Use SNMP to get device information
  */
 async function getDeviceInfoViaSNMP(
   ipAddress: string, 
@@ -26,6 +21,7 @@ async function getDeviceInfoViaSNMP(
   make: string | null;
   model: string | null;
   category: string | null;
+  sysDescr?: string | null;
   error?: string;
 }> {
   try {
@@ -38,57 +34,25 @@ async function getDeviceInfoViaSNMP(
     
     // Use backend connection for real SNMP data
     try {
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-      const response = await fetch(`${backendUrl}/api/snmp/get`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          target: ipAddress,
-          oids: [
-            SNMP_OIDS.sysDescr,
-            SNMP_OIDS.sysName,
-            SNMP_OIDS.sysObjectID
-          ]
-        }),
-        signal: AbortSignal.timeout(5000), // 5 second timeout
-      });
+      // Call the dedicated device discovery endpoint
+      const deviceInfo = await discoverDeviceWithSNMP(ipAddress);
       
-      if (!response.ok) {
-        throw new Error(`Backend returned status ${response.status}: ${response.statusText}`);
+      if (!deviceInfo) {
+        throw new Error("No device information returned from SNMP discovery");
       }
       
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || "SNMP query failed");
-      }
-      
-      console.log("Real SNMP data received:", data);
+      console.log("SNMP device discovery result:", deviceInfo);
       updateProgress(`SNMP information retrieved from ${ipAddress}`, 3);
       
-      // Parse the real SNMP data
-      const sysDescr = data.results[SNMP_OIDS.sysDescr] || '';
-      const sysName = data.results[SNMP_OIDS.sysName] || null;
-      const sysObjectID = data.results[SNMP_OIDS.sysObjectID] || '';
-      
-      // Extract manufacturer from OID
-      const make = getManufacturerFromOID(sysObjectID);
-      
-      // Extract model from system description
-      const model = parseModelFromSNMP(sysDescr, make);
-      
-      // Determine device type/category
-      const category = determineDeviceTypeFromSNMP(sysDescr, sysObjectID);
-      
       return {
-        hostname: sysName,
-        make,
-        model,
-        category
+        hostname: deviceInfo.sysName || null,
+        make: deviceInfo.manufacturer || null,
+        model: deviceInfo.model || null,
+        category: deviceInfo.type || null,
+        sysDescr: deviceInfo.sysDescr || null
       };
     } catch (err) {
-      console.error("Error connecting to backend or performing SNMP query:", err);
+      console.error("Error performing SNMP device discovery:", err);
       const errorMessage = err instanceof Error ? err.message : "Unknown SNMP query error";
       return {
         hostname: null,
@@ -149,57 +113,33 @@ export async function discoverDevicesInSubnet(
         ip_address: ipAddress,
         hostname: null,
         mac_address: pingResult.macAddress,
-        needs_verification: false,
+        confirmed: false,
+        needs_verification: true,
         category: "Unknown",
         make: null,
         model: null,
+        sysDescr: null,
         last_seen: new Date().toISOString()
       };
       
-      // If we have a MAC address, try to identify the manufacturer
-      if (pingResult.macAddress) {
-        newDevice.make = identifyDeviceFromMAC(pingResult.macAddress);
-      }
-      
-      // If we can guess the category based on MAC or IP, do so
-      if (newDevice.make) {
-        newDevice.category = determineDeviceType(ipAddress, newDevice.make);
-      } else {
-        newDevice.category = determineDeviceType(ipAddress);
-      }
-      
-      // Check if we can get additional info via SNMP
+      // Always attempt SNMP identification first
       try {
         updateProgress(`Getting SNMP information from ${ipAddress}...`, 40);
         const snmpInfo = await getDeviceInfoViaSNMP(ipAddress, updateProgress, backendConnected);
         
-        if (snmpInfo.error) {
-          throw new Error(snmpInfo.error);
-        }
-        
-        if (snmpInfo.hostname) {
+        if (!snmpInfo.error) {
           newDevice.hostname = snmpInfo.hostname;
-        }
-        
-        if (snmpInfo.make) {
           newDevice.make = snmpInfo.make;
-        }
-        
-        if (snmpInfo.model) {
           newDevice.model = snmpInfo.model;
-        }
-        
-        if (snmpInfo.category) {
           newDevice.category = snmpInfo.category;
+          newDevice.sysDescr = snmpInfo.sysDescr;
+          // Flag still needs verification until confirmed by user
+          newDevice.needs_verification = true;
+        } else {
+          console.warn(`SNMP information retrieval failed for ${ipAddress}:`, snmpInfo.error);
         }
       } catch (error) {
         console.warn(`SNMP information retrieval failed for ${ipAddress}:`, error);
-        newDevice.needs_verification = true;
-      }
-      
-      // If we're missing key information, mark for verification
-      if (!newDevice.make || !newDevice.model || !newDevice.hostname) {
-        newDevice.needs_verification = true;
       }
       
       devices.push(newDevice);
@@ -308,56 +248,32 @@ export async function discoverDevicesInSubnet(
         ip_address: ipAddress,
         hostname: null,
         mac_address: pingResult.macAddress,
-        needs_verification: false,
+        confirmed: false,
+        needs_verification: true,
         category: "Unknown",
         make: null,
         model: null,
+        sysDescr: null,
         last_seen: new Date().toISOString()
       };
       
-      // If we have a MAC address, try to identify the manufacturer
-      if (pingResult.macAddress) {
-        newDevice.make = identifyDeviceFromMAC(pingResult.macAddress);
-      }
-      
-      // If we can guess the category based on MAC or IP, do so
-      if (newDevice.make) {
-        newDevice.category = determineDeviceType(ipAddress, newDevice.make);
-      } else {
-        newDevice.category = determineDeviceType(ipAddress);
-      }
-      
-      // Check if we can get additional info via SNMP
+      // Always try SNMP identification
       try {
         const snmpInfo = await getDeviceInfoViaSNMP(ipAddress, updateProgress, backendConnected);
         
-        if (snmpInfo.error) {
-          throw new Error(snmpInfo.error);
-        }
-        
-        if (snmpInfo.hostname) {
+        if (!snmpInfo.error) {
           newDevice.hostname = snmpInfo.hostname;
-        }
-        
-        if (snmpInfo.make) {
           newDevice.make = snmpInfo.make;
-        }
-        
-        if (snmpInfo.model) {
           newDevice.model = snmpInfo.model;
-        }
-        
-        if (snmpInfo.category) {
           newDevice.category = snmpInfo.category;
+          newDevice.sysDescr = snmpInfo.sysDescr;
+          // Flag still needs verification until confirmed by user
+          newDevice.needs_verification = true;
+        } else {
+          console.warn(`SNMP information retrieval failed for ${ipAddress}:`, snmpInfo.error);
         }
       } catch (error) {
         console.warn(`SNMP information retrieval failed for ${ipAddress}:`, error);
-        newDevice.needs_verification = true;
-      }
-      
-      // If we're missing key information, mark for verification
-      if (!newDevice.make || !newDevice.model || !newDevice.hostname) {
-        newDevice.needs_verification = true;
       }
       
       devices.push(newDevice);

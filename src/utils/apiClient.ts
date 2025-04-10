@@ -34,6 +34,30 @@ export async function callBackendApi<T = any>(endpoint: string, data: any): Prom
 }
 
 /**
+ * Discover device information using SNMP system description
+ */
+export async function discoverDeviceWithSNMP(
+  deviceIp: string,
+  community: string = 'public',
+  version: string = '2c'
+): Promise<any> {
+  try {
+    console.log(`Discovering device info for ${deviceIp} using SNMP...`);
+    
+    const result = await callBackendApi("/snmp/discoverDevice", {
+      ip: deviceIp,
+      community,
+      version
+    });
+    
+    return result.device || null;
+  } catch (error) {
+    console.error("Error discovering device with SNMP:", error);
+    throw error;
+  }
+}
+
+/**
  * Execute SNMP queries on a connected switch
  */
 export async function executeSnmpQueries(

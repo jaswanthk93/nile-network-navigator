@@ -3,8 +3,6 @@
  * Network IP address utilities
  */
 
-import { OUI_DATABASE } from './deviceIdentification';
-
 // Helper function to parse CIDR notation and get IP information
 export function parseCIDR(cidr: string) {
   const [baseIP, mask] = cidr.split('/');
@@ -103,45 +101,22 @@ export function simulatePingAndARPLookup(ipAddress: string, localIP: string, sub
     return { reachable: true, macAddress: null, isRouted: true };
   }
   
-  // For non-routed traffic, we can simulate finding the actual MAC
+  // For non-routed traffic, generate a simulated MAC
+  // This is just for simulation - the actual device identification happens via SNMP
   const ipNum = ipToLong(ipAddress);
   const seed = ipNum % 1000;
   
-  // Generate a deterministic MAC address based on the IP for consistency
-  // Use specific OUI ranges for specific devices to prevent misidentification
-  // Cisco devices often have IPs ending in .1, .100, .254, etc.
-  const lastOctet = parseInt(ipAddress.split('.')[3]);
-  
-  let manufacturerOUIs = Object.keys(OUI_DATABASE).filter(oui => OUI_DATABASE[oui] === "Cisco");
-  
-  // Use IP characteristics to bias towards correct manufacturer
-  // This is a heuristic approach to improve simulation accuracy
-  if (lastOctet === 1 || lastOctet === 254 || lastOctet % 10 === 0) {
-    // These are likely network infrastructure devices (routers, core switches) - use Cisco OUIs
-    manufacturerOUIs = Object.keys(OUI_DATABASE).filter(oui => OUI_DATABASE[oui] === "Cisco");
-  } else if (lastOctet >= 200 && lastOctet < 254) {
-    // These might be wireless devices - higher chance of being Aruba or similar
-    manufacturerOUIs = Object.keys(OUI_DATABASE).filter(oui => 
-      ["Aruba", "Cisco", "Ubiquiti", "Ruckus", "Meraki"].includes(OUI_DATABASE[oui])
-    );
-  }
-  
-  // If we don't have any specific OUIs for the manufacturer, use all OUIs
-  if (manufacturerOUIs.length === 0) {
-    manufacturerOUIs = Object.keys(OUI_DATABASE);
-  }
-  
-  // Pick a random OUI from our database based on the seed
-  const selectedOUI = manufacturerOUIs[seed % manufacturerOUIs.length].replace(/:/g, '');
-  
-  // Format the MAC address properly with the OUI prefix
-  const lastThreeBytes = [
-    ((seed * 7) % 256).toString(16).padStart(2, '0'),
+  // Generate a random-looking MAC address based on IP for consistency in simulation
+  const macBytes = [
     ((seed * 13) % 256).toString(16).padStart(2, '0'),
-    ((seed * 17) % 256).toString(16).padStart(2, '0')
+    ((seed * 17) % 256).toString(16).padStart(2, '0'),
+    ((seed * 19) % 256).toString(16).padStart(2, '0'),
+    ((seed * 23) % 256).toString(16).padStart(2, '0'),
+    ((seed * 29) % 256).toString(16).padStart(2, '0'),
+    ((seed * 31) % 256).toString(16).padStart(2, '0')
   ];
   
-  const fullMAC = `${selectedOUI.substring(0, 2)}:${selectedOUI.substring(2, 4)}:${selectedOUI.substring(4, 6)}:${lastThreeBytes[0]}:${lastThreeBytes[1]}:${lastThreeBytes[2]}`;
+  const macAddress = macBytes.join(':');
   
-  return { reachable: true, macAddress: fullMAC, isRouted: false };
+  return { reachable: true, macAddress, isRouted: false };
 }
