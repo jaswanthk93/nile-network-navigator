@@ -1,4 +1,3 @@
-
 const express = require('express');
 const cors = require('cors');
 const snmpHandler = require('./handlers/snmpHandler');

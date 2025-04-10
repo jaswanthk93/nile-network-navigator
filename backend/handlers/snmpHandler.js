@@ -313,7 +313,7 @@ exports.discoverVlans = async (req, res) => {
       return res.status(400).json({ error: 'IP address is required' });
     }
     
-    console.log(`[SNMP] Discovering VLANs from ${ip} using community ${community} (v${version})`);
+    logger.info(`[SNMP] Discovering VLANs from ${ip} using community ${community} (v${version})`);
     
     // Different OIDs based on device make
     let vlanOids = {
@@ -321,8 +321,10 @@ exports.discoverVlans = async (req, res) => {
       vlanName: "1.3.6.1.2.1.17.7.1.4.3.1.2"  // Standard Bridge-MIB
     };
     
-    if (make && make.toLowerCase().includes('cisco')) {
-      console.log(`[SNMP] Using Cisco-specific OIDs for ${ip}`);
+    // Use Cisco-specific OIDs for Cisco devices or if make is not specified
+    // This addresses the real-world output provided by the user
+    if (!make || make.toLowerCase().includes('cisco')) {
+      logger.info(`[SNMP] Using Cisco-specific OIDs for ${ip}`);
       vlanOids = {
         vlanList: "1.3.6.1.4.1.9.9.46.1.3.1.1.2", // CISCO-VTP-MIB::vtpVlanState
         vlanName: "1.3.6.1.4.1.9.9.46.1.3.1.1.4", // CISCO-VTP-MIB::vtpVlanName
@@ -340,26 +342,40 @@ exports.discoverVlans = async (req, res) => {
     const vlans = [];
     const invalidVlans = [];
     
-    // Walk through VLAN list
+    // Walk through VLAN state OID to get VLAN IDs
+    // From output: SNMPv2-SMI::enterprises.9.9.46.1.3.1.1.2.1.XXX = INTEGER: 1
+    // Where XXX is the VLAN ID and 1 indicates operational state
     await new Promise((resolve, reject) => {
+      logger.info(`[SNMP] Walking VLAN state OID ${vlanOids.vlanList} on ${ip}`);
       session.walk(vlanOids.vlanList, (varbinds) => {
         for (const varbind of varbinds) {
           if (!snmp.isVarbindError(varbind)) {
             const oidParts = varbind.oid.split('.');
             const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
             
+            // Parse the state value (1 = operational, 2 = suspended, etc.)
+            let stateValue = 0;
+            if (Buffer.isBuffer(varbind.value)) {
+              stateValue = parseInt(varbind.value.toString(), 10);
+            } else if (typeof varbind.value === 'number') {
+              stateValue = varbind.value;
+            }
+            
             if (!isNaN(vlanId)) {
               if (isValidVlanId(vlanId)) {
+                logger.info(`[SNMP] Found VLAN ${vlanId} with state ${stateValue} on ${ip}`);
                 vlans.push({
                   vlanId,
-                  name: `VLAN${vlanId}`, // Default name, will be updated
+                  name: `VLAN${vlanId.toString().padStart(4, '0')}`, // Default name, will be updated
+                  state: stateValue === 1 ? 'active' : 'suspended',
                   usedBy: [ip]
                 });
               } else {
-                console.warn(`[SNMP] Invalid VLAN ID ${vlanId} discovered from ${ip} (outside range ${MIN_VLAN_ID}-${MAX_VLAN_ID})`);
+                logger.warn(`[SNMP] Invalid VLAN ID ${vlanId} discovered from ${ip} (outside range ${MIN_VLAN_ID}-${MAX_VLAN_ID})`);
                 invalidVlans.push({
                   vlanId,
                   name: `VLAN${vlanId}`,
+                  state: stateValue === 1 ? 'active' : 'suspended',
                   usedBy: [ip]
                 });
               }
@@ -368,36 +384,40 @@ exports.discoverVlans = async (req, res) => {
         }
       }, (error) => {
         if (error) {
-          console.error(`[SNMP] Error walking VLAN list on ${ip}:`, error);
+          logger.error(`[SNMP] Error walking VLAN list on ${ip}:`, error);
           reject(error);
         } else {
-          console.log(`[SNMP] Found ${vlans.length} valid VLANs and ${invalidVlans.length} invalid VLANs on ${ip}`);
+          logger.info(`[SNMP] Found ${vlans.length} valid VLANs and ${invalidVlans.length} invalid VLANs on ${ip}`);
           resolve();
         }
       });
     });
     
-    // Get VLAN names
+    // Get VLAN names from the VLAN name OID
+    // From output: SNMPv2-SMI::enterprises.9.9.46.1.3.1.1.4.1.XXX = STRING: "VLAN_NAME"
+    // Where XXX is the VLAN ID and "VLAN_NAME" is the name string
     if (vlans.length > 0) {
       await new Promise((resolve, reject) => {
+        logger.info(`[SNMP] Walking VLAN name OID ${vlanOids.vlanName} on ${ip}`);
         session.walk(vlanOids.vlanName, (varbinds) => {
           for (const varbind of varbinds) {
             if (!snmp.isVarbindError(varbind)) {
               const oidParts = varbind.oid.split('.');
               const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
               
-              if (!isNaN(vlanId) && isValidVlanId(vlanId)) {
+              if (!isNaN(vlanId)) {
+                // Find the VLAN in our list
                 const vlan = vlans.find(v => v.vlanId === vlanId);
                 if (vlan && Buffer.isBuffer(varbind.value)) {
                   vlan.name = varbind.value.toString().trim();
-                  console.log(`[SNMP] VLAN ${vlanId} name: ${vlan.name}`);
+                  logger.info(`[SNMP] VLAN ${vlanId} name: ${vlan.name}`);
                 }
               }
             }
           }
         }, (error) => {
           if (error) {
-            console.error(`[SNMP] Error walking VLAN names on ${ip}:`, error);
+            logger.error(`[SNMP] Error walking VLAN names on ${ip}:`, error);
             reject(error);
           } else {
             resolve();
@@ -417,7 +437,7 @@ exports.discoverVlans = async (req, res) => {
       invalidCount: invalidVlans.length
     });
   } catch (error) {
-    console.error('SNMP VLAN discovery error:', error);
+    logger.error('SNMP VLAN discovery error:', error);
     res.status(500).json({ error: error.message });
   }
 };

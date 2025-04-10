@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { DiscoveredVlan, SubnetData } from "../types/network";
 
@@ -18,7 +19,7 @@ export interface SwitchConnectionDetails {
 }
 
 // Configuration for the agent
-const BACKEND_URL = "http://localhost:3001/api"; // Update this to match your agent URL
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001/api"; // Use env var if available
 
 // Helper function to validate VLAN IDs
 export function isValidVlanId(vlanId: number): boolean {
@@ -208,11 +209,18 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
     if (connectionDetails.method === "snmp") {
       // Direct VLAN discovery via agent
       console.log(`Discovering VLANs from ${connectionDetails.ip} via SNMP`);
+      
+      // Always use Cisco OIDs for the provided switch based on the user's output
+      const updatedConnectionDetails = {
+        ...connectionDetails,
+        make: connectionDetails.make || "Cisco" // Default to Cisco if not specified
+      };
+      
       const result = await callBackendApi("/snmp/discover-vlans", {
-        ip: connectionDetails.ip,
-        community: connectionDetails.community || "public",
-        version: connectionDetails.version || "2c",
-        make: connectionDetails.make
+        ip: updatedConnectionDetails.ip,
+        community: updatedConnectionDetails.community || "public",
+        version: updatedConnectionDetails.version || "2c",
+        make: updatedConnectionDetails.make
       });
       
       // Log raw results for debugging
@@ -484,7 +492,7 @@ export async function discoverVlans(
     const connectionDetails: SwitchConnectionDetails = {
       ip: switchDevice.ip_address,
       method: subnet.access_method || 'snmp',
-      make: switchDevice.make,
+      make: switchDevice.make || "Cisco", // Default to Cisco based on user's output
       model: switchDevice.model
     };
     
