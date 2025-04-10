@@ -1,14 +1,15 @@
 
+import React from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScanSearchIcon } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDiscovery } from "@/hooks/useDiscovery";
 import BackendStatusIndicator from "@/components/discovery/BackendStatusIndicator";
 import DiscoveryProgress from "@/components/discovery/DiscoveryProgress";
+import DiscoveryActions from "@/components/discovery/DiscoveryActions";
 
-const DiscoveryPage = () => {
+const DiscoveryPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { 
@@ -20,8 +21,8 @@ const DiscoveryPage = () => {
     resetDiscovery
   } = useDiscovery(user?.id);
 
-  const handleNext = () => {
-    navigate("/devices");
+  const navigateBack = () => {
+    navigate("/site-subnet");
   };
 
   return (
@@ -59,29 +60,13 @@ const DiscoveryPage = () => {
             isCheckingBackend={isCheckingBackend}
           />
         </CardContent>
-        <CardFooter className="flex justify-between border-t px-6 py-4">
-          <Button 
-            variant="outline"
-            onClick={() => navigate("/site-subnet")}
-            disabled={discovery.status !== "idle" && discovery.status !== "complete" && discovery.status !== "error"}
-          >
-            Back
-          </Button>
-          <div className="space-x-2">
-            {discovery.status === "idle" && (
-              <Button 
-                onClick={startDiscovery}
-                disabled={!backendStatus?.connected}
-              >
-                Start Discovery
-              </Button>
-            )}
-            {discovery.status === "complete" && (
-              <Button onClick={handleNext}>
-                View Discovered Devices
-              </Button>
-            )}
-          </div>
+        <CardFooter className="border-t px-6 py-4">
+          <DiscoveryActions 
+            discoveryStatus={discovery.status}
+            backendConnected={!!backendStatus?.connected}
+            startDiscovery={startDiscovery}
+            navigateBack={navigateBack}
+          />
         </CardFooter>
       </Card>
     </div>
