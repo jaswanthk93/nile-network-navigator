@@ -65,6 +65,36 @@ export const checkBackendConnection = async (): Promise<{
 };
 
 /**
+ * Fetch logs from the backend server
+ * @returns Promise resolving to an array of log entries
+ */
+export const fetchBackendLogs = async (): Promise<{
+  timestamp: string;
+  level: 'info' | 'error' | 'warn';
+  message: string;
+  details?: any;
+}[]> => {
+  try {
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    const response = await fetch(`${backendUrl}/api/logs`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server responded with status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching backend logs:', error);
+    throw error;
+  }
+};
+
+/**
  * Get a human-readable explanation of a backend connection error
  */
 export const getConnectionErrorExplanation = (errorType?: string): string => {

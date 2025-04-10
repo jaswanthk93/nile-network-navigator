@@ -2,9 +2,12 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { WifiIcon, WifiOffIcon, LoaderCircleIcon } from "lucide-react";
+import { ConnectorIcon, LoaderCircleIcon, FileTextIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { checkBackendConnection, getConnectionErrorExplanation } from "@/utils/backendConnection";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { BackendLogViewer } from "@/components/BackendLogViewer";
 
 export function BackendConnectionButton() {
   const [isChecking, setIsChecking] = useState(false);
@@ -14,6 +17,7 @@ export function BackendConnectionButton() {
     errorType?: string;
     lastChecked?: Date;
   } | null>(null);
+  const [openLogs, setOpenLogs] = useState(false);
   const { toast } = useToast();
 
   const checkConnection = async () => {
@@ -62,10 +66,8 @@ export function BackendConnectionButton() {
           >
             {isChecking ? (
               <LoaderCircleIcon className="h-4 w-4 animate-spin" />
-            ) : status?.connected ? (
-              <WifiIcon className="h-4 w-4" />
             ) : (
-              <WifiOffIcon className="h-4 w-4" />
+              <ConnectorIcon className="h-4 w-4" />
             )}
             <span className="sr-only">Check backend connection</span>
           </Button>
@@ -91,6 +93,28 @@ export function BackendConnectionButton() {
                 Last checked: {status.lastChecked.toLocaleTimeString()}
               </p>
             )}
+            <div className="pt-2">
+              <Dialog open={openLogs} onOpenChange={setOpenLogs}>
+                <DialogTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full flex gap-2 items-center"
+                  >
+                    <FileTextIcon className="h-3 w-3" />
+                    View Logs
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[700px] max-h-[80vh]">
+                  <DialogHeader>
+                    <DialogTitle>Backend Connection Logs</DialogTitle>
+                  </DialogHeader>
+                  <ScrollArea className="h-[500px] rounded-md border p-4">
+                    <BackendLogViewer />
+                  </ScrollArea>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
         </TooltipContent>
       </Tooltip>
