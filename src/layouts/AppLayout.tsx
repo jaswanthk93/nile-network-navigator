@@ -1,10 +1,9 @@
-
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 import { UserNav } from '@/components/UserNav';
 import { NavLink } from '@/components/NavLink';
+import { BackendConnectionButton } from '@/components/BackendConnectionButton';
 import { NetworkIcon, MapPinIcon, ScanSearchIcon, MonitorIcon, ShareIcon, FolderKanbanIcon, TabletSmartphoneIcon } from 'lucide-react';
 
 const AppLayout = () => {
@@ -47,6 +46,7 @@ const AppLayout = () => {
           </nav>
         </div>
         <div className="flex items-center gap-4">
+          <BackendConnectionButton />
           <UserNav />
         </div>
       </header>
