@@ -54,3 +54,26 @@ export interface SubnetData {
   username: string | null;
   password: string | null;
 }
+
+/**
+ * Interface for device data from database
+ */
+export interface DeviceData {
+  id: string;
+  ip_address: string;
+  hostname: string | null;
+  mac_address: string | null;
+  make: string | null;
+  model: string | null;
+  category: string | null;
+  status: string | null;
+  site_id: string;
+  subnet_id: string;
+  user_id: string;
+  created_at: string;
+  last_seen: string;
+  needs_verification: boolean | null;
+  confirmed: boolean | null;
+  sysDescr: string | null;
+  sysdescr: string | null;  // Include both cases to handle database inconsistencies
+}

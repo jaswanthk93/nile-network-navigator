@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -10,6 +9,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { MonitorIcon, SearchIcon, ServerIcon, WifiIcon, RouterIcon, PrinterIcon, AlertCircleIcon, CheckCircleIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { DeviceData } from "@/types/network";
 
 interface Device {
   id: string;
@@ -34,7 +34,6 @@ const DevicesPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Fetch devices from Supabase
   useEffect(() => {
     const fetchDevices = async () => {
       if (!user) return;
@@ -56,8 +55,7 @@ const DevicesPage = () => {
         return;
       }
       
-      // Transform the data to match our Device interface
-      const transformedDevices = data.map(device => ({
+      const transformedDevices = data.map((device: DeviceData) => ({
         id: device.id,
         ipAddress: device.ip_address,
         hostname: device.hostname || '',
@@ -88,12 +86,10 @@ const DevicesPage = () => {
 
   const handleSaveEdit = async (id: string, field: keyof Device, value: string) => {
     try {
-      // Update local state
       setDevices(devices.map(device => 
         device.id === id ? { ...device, [field]: value } : device
       ));
       
-      // Map fields to database column names
       const fieldMapping: Record<string, string> = {
         'hostname': 'hostname',
         'make': 'make',
@@ -101,12 +97,10 @@ const DevicesPage = () => {
         'category': 'category'
       };
       
-      // Update the database
       const { error } = await supabase
         .from('devices')
         .update({ 
           [fieldMapping[field]]: value,
-          // When user edits a field, mark the device as confirmed
           confirmed: true,
           needs_verification: false
         })
@@ -116,7 +110,6 @@ const DevicesPage = () => {
         throw error;
       }
       
-      // Also update the local state for confirmation status
       setDevices(devices.map(device => 
         device.id === id ? { 
           ...device, 
@@ -159,7 +152,6 @@ const DevicesPage = () => {
 
   const handleConfirmDevices = async () => {
     try {
-      // Update all devices to mark them as confirmed
       const { error } = await supabase
         .from('devices')
         .update({ 
@@ -172,7 +164,6 @@ const DevicesPage = () => {
         throw error;
       }
       
-      // Update local state
       setDevices(devices.map(device => ({
         ...device,
         confirmed: true,
