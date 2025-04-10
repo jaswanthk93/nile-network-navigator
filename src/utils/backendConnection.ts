@@ -5,17 +5,29 @@
 
 /**
  * Check if the backend proxy agent is connected and responding
- * @returns Promise resolving to connection status
+ * @returns Promise resolving to connection status with detailed error information
  */
-export const checkBackendConnection = async (): Promise<{ connected: boolean; message: string }> => {
+export const checkBackendConnection = async (): Promise<{ 
+  connected: boolean; 
+  message: string;
+  errorType?: 'timeout' | 'network' | 'server' | 'unknown';
+}> => {
   try {
-    const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}/api/health`, {
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    console.log(`Checking backend connection at ${backendUrl}`);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    
+    const response = await fetch(`${backendUrl}/api/health`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
-      signal: AbortSignal.timeout(3000), // 3 second timeout
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
 
     if (response.ok) {
       const data = await response.json();
@@ -25,12 +37,79 @@ export const checkBackendConnection = async (): Promise<{ connected: boolean; me
       };
     }
     
-    return { connected: false, message: 'Backend not responding' };
-  } catch (error) {
-    console.error('Error checking backend connection:', error);
     return { 
       connected: false, 
-      message: error instanceof Error ? error.message : 'Connection failed' 
+      message: `Backend responded with status: ${response.status}`, 
+      errorType: 'server' 
     };
+  } catch (error) {
+    console.error('Error checking backend connection:', error);
+    
+    let errorType: 'timeout' | 'network' | 'unknown' = 'unknown';
+    let message = error instanceof Error ? error.message : 'Connection failed';
+    
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      errorType = 'timeout';
+      message = 'Connection timed out after 3 seconds';
+    } else if (error instanceof TypeError && error.message.includes('fetch')) {
+      errorType = 'network';
+      message = 'Network error: Cannot reach backend server';
+    }
+    
+    return { 
+      connected: false, 
+      message, 
+      errorType 
+    };
+  }
+};
+
+/**
+ * Get a human-readable explanation of a backend connection error
+ */
+export const getConnectionErrorExplanation = (errorType?: string): string => {
+  switch (errorType) {
+    case 'timeout':
+      return 'The connection to the backend timed out. The server might be overloaded or unreachable.';
+    case 'network':
+      return 'Could not establish a network connection to the backend server. Please check that the backend is running and accessible.';
+    case 'server':
+      return 'The backend server responded with an error. The service might be misconfigured or experiencing issues.';
+    default:
+      return 'The backend connection failed. Please ensure the backend server is running and properly configured.';
+  }
+};
+
+/**
+ * Get troubleshooting steps based on error type
+ */
+export const getConnectionTroubleshootingSteps = (errorType?: string): string[] => {
+  const commonSteps = [
+    'Ensure the backend server is running',
+    'Check your network connection',
+    'Verify the VITE_BACKEND_URL environment variable is set correctly'
+  ];
+  
+  switch (errorType) {
+    case 'timeout':
+      return [
+        ...commonSteps,
+        'The server might be overloaded - try again later',
+        'Check if your firewall is blocking the connection'
+      ];
+    case 'network':
+      return [
+        ...commonSteps,
+        'Check if the backend is running on the expected port',
+        'Make sure there are no firewall or network restrictions'
+      ];
+    case 'server':
+      return [
+        ...commonSteps,
+        'Check the backend server logs for errors',
+        'Verify the backend server configuration'
+      ];
+    default:
+      return commonSteps;
   }
 };

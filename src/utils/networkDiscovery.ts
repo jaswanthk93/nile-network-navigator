@@ -634,7 +634,7 @@ function parseModelFromSNMP(sysDescr: string, manufacturer: string | null): stri
   return match ? match[0] : null;
 }
 
-// Use SNMP to get device information - now prefers real backend connection over simulation
+// Use SNMP to get device information - now enforces real backend connection
 async function getDeviceInfoViaSNMP(
   ipAddress: string, 
   updateProgress: (message: string, progress: number) => void,
@@ -644,98 +644,86 @@ async function getDeviceInfoViaSNMP(
   make: string | null;
   model: string | null;
   category: string | null;
+  error?: string;
 }> {
   try {
     updateProgress(`Retrieving SNMP information from ${ipAddress}...`, 1);
     
-    // If backend connection is available, use it for real SNMP data
-    if (useBackendConnection) {
-      try {
-        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-        const response = await fetch(`${backendUrl}/api/snmp/get`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            target: ipAddress,
-            oids: [
-              "1.3.6.1.2.1.1.1.0", // sysDescr
-              "1.3.6.1.2.1.1.5.0", // sysName
-              "1.3.6.1.2.1.1.2.0"  // sysObjectID
-            ]
-          }),
-          signal: AbortSignal.timeout(5000), // 5 second timeout
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            console.log("Real SNMP data received:", data);
-            updateProgress(`SNMP information retrieved from ${ipAddress}`, 3);
-            
-            // Parse the real SNMP data
-            const sysDescr = data.results["1.3.6.1.2.1.1.1.0"] || '';
-            const sysName = data.results["1.3.6.1.2.1.1.5.0"] || null;
-            const sysObjectID = data.results["1.3.6.1.2.1.1.2.0"] || '';
-            
-            // Extract manufacturer from OID
-            const make = getManufacturerFromOID(sysObjectID);
-            
-            // Extract model from system description
-            const model = parseModelFromSNMP(sysDescr, make);
-            
-            // Determine device type/category
-            const category = determineDeviceTypeFromSNMP(sysDescr, sysObjectID);
-            
-            return {
-              hostname: sysName,
-              make,
-              model,
-              category
-            };
-          }
-        }
-        
-        console.warn("Backend request failed, falling back to simulation");
-      } catch (err) {
-        console.error("Error connecting to backend:", err);
-        console.warn("Backend request failed, falling back to simulation");
-      }
+    // If backend connection is required but not available, throw an error
+    if (!useBackendConnection) {
+      throw new Error("Backend connection required for SNMP operations");
     }
     
-    // Fallback to simulation if backend is not available or request failed
-    // In a real implementation, we would use actual SNMP queries
-    // For now, we'll simulate this with some sample data
-    console.log("Using simulated SNMP data for", ipAddress);
-    const sysName = `Device-${ipAddress.split('.').join('-')}`;
-    const sysDescr = `Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.0(2)SE, RELEASE SOFTWARE (fc1)`;
-    const sysObjectID = "1.3.6.1.4.1.9.1.716"; // Cisco 2960
-    
-    // Extract manufacturer from OID
-    const make = getManufacturerFromOID(sysObjectID);
-    
-    // Extract model from system description
-    const model = parseModelFromSNMP(sysDescr, make);
-    
-    // Determine device type/category
-    const category = determineDeviceTypeFromSNMP(sysDescr, sysObjectID);
-    
-    updateProgress(`SNMP information retrieved from ${ipAddress}`, 3);
-    
-    return {
-      hostname: sysName,
-      make,
-      model,
-      category
-    };
+    // Use backend connection for real SNMP data
+    try {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/snmp/get`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          target: ipAddress,
+          oids: [
+            "1.3.6.1.2.1.1.1.0", // sysDescr
+            "1.3.6.1.2.1.1.5.0", // sysName
+            "1.3.6.1.2.1.1.2.0"  // sysObjectID
+          ]
+        }),
+        signal: AbortSignal.timeout(5000), // 5 second timeout
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Backend returned status ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || "SNMP query failed");
+      }
+      
+      console.log("Real SNMP data received:", data);
+      updateProgress(`SNMP information retrieved from ${ipAddress}`, 3);
+      
+      // Parse the real SNMP data
+      const sysDescr = data.results["1.3.6.1.2.1.1.1.0"] || '';
+      const sysName = data.results["1.3.6.1.2.1.1.5.0"] || null;
+      const sysObjectID = data.results["1.3.6.1.2.1.1.2.0"] || '';
+      
+      // Extract manufacturer from OID
+      const make = getManufacturerFromOID(sysObjectID);
+      
+      // Extract model from system description
+      const model = parseModelFromSNMP(sysDescr, make);
+      
+      // Determine device type/category
+      const category = determineDeviceTypeFromSNMP(sysDescr, sysObjectID);
+      
+      return {
+        hostname: sysName,
+        make,
+        model,
+        category
+      };
+    } catch (err) {
+      console.error("Error connecting to backend or performing SNMP query:", err);
+      const errorMessage = err instanceof Error ? err.message : "Unknown SNMP query error";
+      return {
+        hostname: null,
+        make: null,
+        model: null,
+        category: null,
+        error: errorMessage
+      };
+    }
   } catch (error) {
     console.error(`Error getting SNMP info from ${ipAddress}:`, error);
     return {
       hostname: null,
       make: null,
       model: null,
-      category: null
+      category: null,
+      error: error instanceof Error ? error.message : "Unknown error"
     };
   }
 }
@@ -746,6 +734,10 @@ export async function discoverDevicesInSubnet(
   updateProgress: (message: string, progress: number) => void,
   backendConnected: boolean = false
 ): Promise<any[]> {
+  if (!backendConnected) {
+    throw new Error("Backend connection is required for device discovery");
+  }
+  
   const devices: any[] = [];
   const { baseIP, maskBits } = parseCIDR(cidr);
   
@@ -796,6 +788,10 @@ export async function discoverDevicesInSubnet(
       try {
         updateProgress(`Getting SNMP information from ${ipAddress}...`, 40);
         const snmpInfo = await getDeviceInfoViaSNMP(ipAddress, updateProgress, backendConnected);
+        
+        if (snmpInfo.error) {
+          throw new Error(snmpInfo.error);
+        }
         
         if (snmpInfo.hostname) {
           newDevice.hostname = snmpInfo.hostname;
@@ -947,9 +943,12 @@ export async function discoverDevicesInSubnet(
       }
       
       // Check if we can get additional info via SNMP
-      // This should only be used when we have a backend agent capable of SNMP
       try {
         const snmpInfo = await getDeviceInfoViaSNMP(ipAddress, updateProgress, backendConnected);
+        
+        if (snmpInfo.error) {
+          throw new Error(snmpInfo.error);
+        }
         
         if (snmpInfo.hostname) {
           newDevice.hostname = snmpInfo.hostname;

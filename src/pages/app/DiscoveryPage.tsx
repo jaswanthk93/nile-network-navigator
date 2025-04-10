@@ -4,19 +4,25 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { 
   ScanSearchIcon, 
   AlertTriangleIcon, 
   WifiIcon, 
   ServerIcon,
   AlertCircleIcon,
-  DatabaseIcon
+  DatabaseIcon,
+  RefreshCwIcon
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { discoverDevicesInSubnet, saveDiscoveredDevices } from "@/utils/networkDiscovery";
-import { checkBackendConnection } from "@/utils/backendConnection";
+import { 
+  checkBackendConnection, 
+  getConnectionErrorExplanation, 
+  getConnectionTroubleshootingSteps 
+} from "@/utils/backendConnection";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 interface DiscoveryStatus {
   status: "idle" | "scanning" | "connecting" | "gathering" | "complete" | "error";
@@ -26,6 +32,14 @@ interface DiscoveryStatus {
   devicesNeedingVerification: number;
   devicesByCategory?: Record<string, number>;
   error?: string;
+  errorType?: string;
+}
+
+interface BackendStatus {
+  connected: boolean;
+  message: string;
+  errorType?: 'timeout' | 'network' | 'server' | 'unknown';
+  lastChecked: Date;
 }
 
 const DiscoveryPage = () => {
@@ -38,31 +52,43 @@ const DiscoveryPage = () => {
   });
   const [subnetsToScan, setSubnetsToScan] = useState<any[]>([]);
   const [currentSubnetIndex, setCurrentSubnetIndex] = useState(0);
-  const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
+  const [backendStatus, setBackendStatus] = useState<BackendStatus | null>(null);
+  const [isCheckingBackend, setIsCheckingBackend] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  useEffect(() => {
-    const verifyBackendConnection = async () => {
-      try {
-        const result = await checkBackendConnection();
-        setBackendConnected(result.connected);
-        
-        if (!result.connected) {
-          toast({
-            title: "Backend Not Connected",
-            description: "The backend agent is not connected. SNMP device discovery will be limited.",
-            variant: "destructive",
-          });
-        }
-      } catch (error) {
-        console.error("Failed to check backend connection:", error);
-        setBackendConnected(false);
+  const checkBackendStatus = async () => {
+    setIsCheckingBackend(true);
+    try {
+      const result = await checkBackendConnection();
+      setBackendStatus({
+        ...result,
+        lastChecked: new Date()
+      });
+      
+      if (!result.connected) {
+        toast({
+          title: "Backend Not Connected",
+          description: result.message,
+          variant: "destructive",
+        });
       }
-    };
-    
-    verifyBackendConnection();
+    } catch (error) {
+      console.error("Failed to check backend connection:", error);
+      setBackendStatus({
+        connected: false,
+        message: error instanceof Error ? error.message : "Unknown error checking connection",
+        errorType: "unknown",
+        lastChecked: new Date()
+      });
+    } finally {
+      setIsCheckingBackend(false);
+    }
+  };
+  
+  useEffect(() => {
+    checkBackendStatus();
   }, [toast]);
 
   useEffect(() => {
@@ -154,22 +180,27 @@ const DiscoveryPage = () => {
       return;
     }
 
-    // Ensure we have the latest backend connection status before starting
-    try {
-      const result = await checkBackendConnection();
-      setBackendConnected(result.connected);
-      console.log("Backend connection status:", result.connected ? "Connected" : "Not connected");
+    // Check backend connection before starting
+    await checkBackendStatus();
+    
+    if (!backendStatus?.connected) {
+      toast({
+        title: "Backend Not Connected",
+        description: "Cannot proceed with discovery. Backend agent is not connected.",
+        variant: "destructive",
+      });
       
-      if (!result.connected) {
-        toast({
-          title: "Backend Not Connected",
-          description: "The backend agent is not connected. SNMP discovery capabilities will be limited.",
-          variant: "default",
-        });
-      }
-    } catch (error) {
-      console.error("Failed to check backend connection:", error);
-      setBackendConnected(false);
+      setDiscovery({
+        status: "error",
+        progress: 0,
+        message: "Backend connection required for discovery",
+        devices: 0,
+        devicesNeedingVerification: 0,
+        error: "Backend agent not connected. Please check connection and try again.",
+        errorType: backendStatus?.errorType
+      });
+      
+      return;
     }
 
     try {
@@ -204,12 +235,12 @@ const DiscoveryPage = () => {
         message: `Scanning subnet ${subnetsToScan[currentSubnetIndex].cidr}...`,
       }));
       
-      // Pass the backend connection status to the discovery function
-      console.log("Starting discovery with backend connected:", backendConnected);
+      // Use the backend connection for discovery
+      console.log("Starting discovery with backend connected:", backendStatus.connected);
       const discoveredDevices = await discoverDevicesInSubnet(
         subnetsToScan[currentSubnetIndex].cidr,
         updateDiscoveryProgress,
-        backendConnected === true
+        true // Always attempt to use real backend connection
       );
       
       const devicesNeedingVerification = discoveredDevices.filter(device => 
@@ -292,33 +323,6 @@ const DiscoveryPage = () => {
     }
   };
 
-  const simulateError = () => {
-    setDiscovery({
-      status: "scanning",
-      progress: 5,
-      message: "Scanning subnets for devices...",
-      devices: 0,
-      devicesNeedingVerification: 0
-    });
-
-    setTimeout(() => {
-      setDiscovery({
-        status: "error",
-        progress: 15,
-        message: "Error during discovery",
-        devices: 0,
-        devicesNeedingVerification: 0,
-        error: "Connection timeout on subnet"
-      });
-      
-      toast({
-        title: "Discovery error",
-        description: "Connection timeout on subnet",
-        variant: "destructive",
-      });
-    }, 2000);
-  };
-
   const handleNext = () => {
     navigate("/devices");
   };
@@ -343,17 +347,55 @@ const DiscoveryPage = () => {
               ? "Ready to scan your network for devices" 
               : discovery.message}
           </CardDescription>
-          {backendConnected === false && (
-            <div className="mt-2 flex items-center gap-2 text-amber-600 text-sm">
-              <AlertCircleIcon className="h-4 w-4" />
-              <span>Backend agent not connected. SNMP discovery capabilities limited.</span>
+          
+          <div className="mt-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {backendStatus?.connected ? (
+                <div className="flex items-center gap-2 text-green-600 text-sm">
+                  <DatabaseIcon className="h-4 w-4" />
+                  <span>Backend agent connected</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-amber-600 text-sm">
+                  <AlertCircleIcon className="h-4 w-4" />
+                  <span>Backend agent not connected</span>
+                </div>
+              )}
             </div>
-          )}
-          {backendConnected === true && (
-            <div className="mt-2 flex items-center gap-2 text-green-600 text-sm">
-              <DatabaseIcon className="h-4 w-4" />
-              <span>Backend agent connected. SNMP discovery available.</span>
-            </div>
+            
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={checkBackendStatus}
+              disabled={isCheckingBackend}
+              className="flex items-center gap-1"
+            >
+              {isCheckingBackend ? (
+                <>
+                  <RefreshCwIcon className="h-3 w-3 animate-spin" />
+                  <span>Checking...</span>
+                </>
+              ) : (
+                <>
+                  <RefreshCwIcon className="h-3 w-3" />
+                  <span>Check Connection</span>
+                </>
+              )}
+            </Button>
+          </div>
+          
+          {!backendStatus?.connected && backendStatus?.errorType && (
+            <Alert variant="warning" className="mt-3">
+              <AlertTitle>Backend Connection Failed</AlertTitle>
+              <AlertDescription className="space-y-2">
+                <p>{getConnectionErrorExplanation(backendStatus.errorType)}</p>
+                <ul className="text-xs list-disc list-inside mt-1">
+                  {getConnectionTroubleshootingSteps(backendStatus.errorType).map((step, index) => (
+                    <li key={index}>{step}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
           )}
         </CardHeader>
         <CardContent className="space-y-4">
@@ -374,20 +416,31 @@ const DiscoveryPage = () => {
                   <p className="text-sm text-muted-foreground">
                     {discovery.error}
                   </p>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="mt-2"
-                    onClick={() => setDiscovery({
-                      status: "idle",
-                      progress: 0,
-                      message: "Ready to begin network discovery",
-                      devices: 0,
-                      devicesNeedingVerification: 0
-                    })}
-                  >
-                    Retry
-                  </Button>
+                  <div className="flex gap-2 mt-2">
+                    {discovery.errorType === 'backend' && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={checkBackendStatus}
+                        disabled={isCheckingBackend}
+                      >
+                        {isCheckingBackend ? "Checking..." : "Check Backend"}
+                      </Button>
+                    )}
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setDiscovery({
+                        status: "idle",
+                        progress: 0,
+                        message: "Ready to begin network discovery",
+                        devices: 0,
+                        devicesNeedingVerification: 0
+                      })}
+                    >
+                      Reset
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -449,13 +502,11 @@ const DiscoveryPage = () => {
           </Button>
           <div className="space-x-2">
             {discovery.status === "idle" && (
-              <Button onClick={startDiscovery}>
+              <Button 
+                onClick={startDiscovery}
+                disabled={!backendStatus?.connected}
+              >
                 Start Discovery
-              </Button>
-            )}
-            {discovery.status === "idle" && (
-              <Button variant="outline" onClick={simulateError}>
-                Simulate Error
               </Button>
             )}
             {discovery.status === "complete" && (
