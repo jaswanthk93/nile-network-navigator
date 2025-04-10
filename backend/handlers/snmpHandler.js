@@ -1,4 +1,3 @@
-
 const snmp = require('net-snmp');
 
 // In-memory session store
@@ -315,21 +314,11 @@ exports.discoverVlans = async (req, res) => {
     
     logger.info(`[SNMP] Discovering VLANs from ${ip} using community ${community} (v${version})`);
     
-    // Different OIDs based on device make
-    let vlanOids = {
-      vlanList: "1.3.6.1.2.1.17.7.1.4.3.1.1", // Standard Bridge-MIB
-      vlanName: "1.3.6.1.2.1.17.7.1.4.3.1.2"  // Standard Bridge-MIB
+    // Always use Cisco-specific OIDs for VLAN state and name
+    const vlanOids = {
+      vlanList: "1.3.6.1.4.1.9.9.46.1.3.1.1.2", // CISCO-VTP-MIB::vtpVlanState
+      vlanName: "1.3.6.1.4.1.9.9.46.1.3.1.1.4", // CISCO-VTP-MIB::vtpVlanName
     };
-    
-    // Use Cisco-specific OIDs for Cisco devices or if make is not specified
-    // This addresses the real-world output provided by the user
-    if (!make || make.toLowerCase().includes('cisco')) {
-      logger.info(`[SNMP] Using Cisco-specific OIDs for ${ip}`);
-      vlanOids = {
-        vlanList: "1.3.6.1.4.1.9.9.46.1.3.1.1.2", // CISCO-VTP-MIB::vtpVlanState
-        vlanName: "1.3.6.1.4.1.9.9.46.1.3.1.1.4", // CISCO-VTP-MIB::vtpVlanName
-      };
-    }
     
     // Create temporary session
     const snmpVersion = version === '1' ? snmp.Version1 : snmp.Version2c;
@@ -366,7 +355,7 @@ exports.discoverVlans = async (req, res) => {
                 logger.info(`[SNMP] Found VLAN ${vlanId} with state ${stateValue} on ${ip}`);
                 vlans.push({
                   vlanId,
-                  name: `VLAN${vlanId.toString().padStart(4, '0')}`, // Default name, will be updated
+                  name: `VLAN${vlanId}`, // Default name, will be updated
                   state: stateValue === 1 ? 'active' : 'suspended',
                   usedBy: [ip]
                 });

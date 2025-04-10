@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
 import { TabletSmartphoneIcon, SearchIcon, WifiIcon, XCircleIcon, CheckCircleIcon, AlertCircleIcon } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface MacAddress {
   id: string;
@@ -21,93 +22,79 @@ interface MacAddress {
   selected: boolean;
 }
 
-const mockMacAddresses: MacAddress[] = [
-  {
-    id: "1",
-    macAddress: "00:1A:2B:3C:4D:5E",
-    vlanId: 10,
-    segmentName: "Employee",
-    deviceType: "Laptop",
-    port: "GigabitEthernet1/0/1",
-    status: "authenticated",
-    selected: true
-  },
-  {
-    id: "2",
-    macAddress: "AA:BB:CC:DD:EE:FF",
-    vlanId: 10,
-    segmentName: "Employee",
-    deviceType: "Desktop",
-    port: "GigabitEthernet1/0/2",
-    status: "authenticated",
-    selected: true
-  },
-  {
-    id: "3",
-    macAddress: "11:22:33:44:55:66",
-    vlanId: 20,
-    segmentName: "Voice",
-    deviceType: "IP Phone",
-    port: "GigabitEthernet1/0/3",
-    status: "authenticated",
-    selected: true
-  },
-  {
-    id: "4",
-    macAddress: "AA:11:BB:22:CC:33",
-    vlanId: 30,
-    segmentName: "Guest",
-    deviceType: "Mobile",
-    status: "unauthenticated",
-    selected: false
-  },
-  {
-    id: "5",
-    macAddress: "DD:EE:FF:00:11:22",
-    vlanId: 40,
-    segmentName: "IoT",
-    deviceType: "Camera",
-    port: "GigabitEthernet1/0/4",
-    status: "authenticated",
-    selected: true
-  },
-  {
-    id: "6",
-    macAddress: "33:44:55:66:77:88",
-    vlanId: 10,
-    segmentName: "Employee",
-    deviceType: "Unknown",
-    status: "unknown",
-    selected: false
-  },
-  {
-    id: "7",
-    macAddress: "99:88:77:66:55:44",
-    vlanId: 40,
-    segmentName: "IoT",
-    deviceType: "Thermostat",
-    port: "GigabitEthernet1/0/5",
-    status: "authenticated",
-    selected: true
-  },
-  {
-    id: "8",
-    macAddress: "55:44:33:22:11:00",
-    vlanId: 30,
-    segmentName: "Guest",
-    deviceType: "Mobile",
-    status: "unauthenticated",
-    selected: false
-  }
-];
-
 const MacAddressPage = () => {
-  const [macAddresses, setMacAddresses] = useState<MacAddress[]>(mockMacAddresses);
+  const [macAddresses, setMacAddresses] = useState<MacAddress[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [segmentFilter, setSegmentFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const fetchMacAddresses = async () => {
+      if (!user) {
+        navigate('/login');
+        return;
+      }
+
+      try {
+        setLoading(true);
+        
+        const { data: vlans, error: vlansError } = await supabase
+          .from('vlans')
+          .select('*')
+          .eq('user_id', user.id);
+          
+        if (vlansError) {
+          throw new Error(`Error fetching VLANs: ${vlansError.message}`);
+        }
+        
+        const mockedMacs: MacAddress[] = [];
+        
+        if (vlans && vlans.length > 0) {
+          vlans.forEach((vlan, index) => {
+            for (let i = 0; i < 2; i++) {
+              const macId = `${vlan.id}-mac-${i}`;
+              const macAddress = generateRandomMac();
+              
+              mockedMacs.push({
+                id: macId,
+                macAddress,
+                vlanId: vlan.vlan_id,
+                segmentName: vlan.description || `Segment ${vlan.vlan_id}`,
+                deviceType: i % 2 === 0 ? "Desktop" : "Mobile",
+                port: i % 2 === 0 ? `GigabitEthernet1/0/${index + i}` : undefined,
+                status: i % 3 === 0 ? "authenticated" : i % 3 === 1 ? "unauthenticated" : "unknown",
+                selected: true
+              });
+            }
+          });
+        }
+        
+        setMacAddresses(mockedMacs);
+      } catch (error) {
+        console.error("Error loading MAC addresses:", error);
+        toast({
+          title: "Error Loading MAC Addresses",
+          description: error instanceof Error ? error.message : "An unexpected error occurred",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMacAddresses();
+  }, [user, navigate, toast]);
+
+  const generateRandomMac = () => {
+    return Array(6).fill(0)
+      .map(() => Math.floor(Math.random() * 256).toString(16).padStart(2, '0'))
+      .join(':')
+      .toUpperCase();
+  };
 
   const filteredMacAddresses = macAddresses.filter(mac => {
     const matchesSearch = mac.macAddress.toLowerCase().includes(searchTerm.toLowerCase()) || 

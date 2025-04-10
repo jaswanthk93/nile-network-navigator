@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -107,8 +108,9 @@ const VlansPage = () => {
           });
         };
         
-        // Use our real discovery method
+        // Use our discovery method with real backend data
         const discoveredVlans = await discoverVlans(devices, updateProgress);
+        console.log("Raw discovered VLANs:", discoveredVlans);
         
         if (discoveredVlans.length === 0) {
           toast({
