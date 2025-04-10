@@ -1,12 +1,13 @@
-
 import { supabase } from "@/integrations/supabase/client";
 
 // Interface for switch connection details
 export interface SwitchConnectionDetails {
   ip: string;
-  username: string;
-  password: string;
-  method: "ssh" | "telnet";
+  community?: string;  // SNMP community string (typically 'public' or 'private')
+  version?: "1" | "2c" | "3";  // SNMP version
+  username?: string;  // For SNMPv3
+  password?: string;  // For SNMPv3
+  method: "snmp" | "ssh" | "telnet";
   make?: string;
   model?: string;
 }
@@ -19,7 +20,31 @@ export interface DiscoveredVlan {
   usedBy: string[];
 }
 
-// Vendor-specific commands to retrieve VLAN information
+// SNMP OIDs for common VLAN information
+const VLAN_OIDS: Record<string, Record<string, string>> = {
+  "Cisco": {
+    "vlanList": "1.3.6.1.4.1.9.9.46.1.3.1.1.2",
+    "vlanName": "1.3.6.1.4.1.9.9.46.1.3.1.1.4",
+    "vlanType": "1.3.6.1.4.1.9.9.46.1.3.1.1.3"
+  },
+  "Juniper": {
+    "vlanList": "1.3.6.1.2.1.17.7.1.4.3.1.1",
+    "vlanName": "1.3.6.1.2.1.17.7.1.4.3.1.2",
+    "vlanType": "1.3.6.1.2.1.17.7.1.4.3.1.3"
+  },
+  "HP": {
+    "vlanList": "1.3.6.1.2.1.17.7.1.4.3.1.1",
+    "vlanName": "1.3.6.1.2.1.17.7.1.4.3.1.2",
+    "vlanType": "1.3.6.1.2.1.17.7.1.4.3.1.3"
+  },
+  "Default": {
+    "vlanList": "1.3.6.1.2.1.17.7.1.4.3.1.1",
+    "vlanName": "1.3.6.1.2.1.17.7.1.4.3.1.2",
+    "vlanType": "1.3.6.1.2.1.17.7.1.4.3.1.3"
+  }
+};
+
+// Command sets for SSH/Telnet fallback if SNMP isn't available
 const VLAN_COMMANDS: Record<string, string[]> = {
   "Cisco": [
     "terminal length 0",
@@ -158,29 +183,39 @@ function parseVlanOutput(output: string, make: string): DiscoveredVlan[] {
 }
 
 /**
- * Connect to a switch using the appropriate method (SSH or Telnet)
+ * Connect to a switch using SNMP
  * 
  * NOTE: In a production environment, this would connect to a backend service
- * that handles the actual SSH/Telnet connections, as browsers cannot establish
- * these connections directly.
+ * that handles the actual SNMP requests, as browsers cannot make SNMP requests directly.
  */
 export async function connectToSwitch(connectionDetails: SwitchConnectionDetails): Promise<string | null> {
   try {
-    if (!connectionDetails.username || !connectionDetails.password) {
-      throw new Error("Username and password are required to connect to network devices");
+    if (connectionDetails.method === "snmp" && !connectionDetails.community && !connectionDetails.username) {
+      throw new Error("SNMP requires either a community string or username/password");
+    }
+    
+    if ((connectionDetails.method === "ssh" || connectionDetails.method === "telnet") && 
+        (!connectionDetails.username || !connectionDetails.password)) {
+      throw new Error("Username and password are required for SSH/Telnet connections");
     }
     
     console.log(`Attempting to connect to ${connectionDetails.ip} via ${connectionDetails.method}...`);
     
     // PRODUCTION IMPLEMENTATION NOTES:
     // 1. In a real implementation, this would make an API call to a backend service
-    // 2. The backend service would establish the actual SSH/Telnet connection
-    // 3. The backend would handle authentication and return a session identifier
+    // 2. The backend service would establish the connection using the appropriate protocol:
+    //    - For SNMP, it would use a library like 'snmp-native' or 'net-snmp'
+    //    - For SSH/Telnet, it would use the appropriate client library
+    // 3. The backend would return a session identifier or connection status
     
     // For demonstration purposes, we simulate a successful connection
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    return `Connected successfully via ${connectionDetails.method.toUpperCase()} (Would connect to real device in production)`;
+    const methodName = connectionDetails.method === "snmp" 
+      ? `SNMPv${connectionDetails.version || "2c"}`
+      : connectionDetails.method.toUpperCase();
+      
+    return `Connected successfully via ${methodName} (Would connect to real device in production)`;
   } catch (error) {
     console.error("Error connecting to switch:", error);
     return null;
@@ -188,10 +223,72 @@ export async function connectToSwitch(connectionDetails: SwitchConnectionDetails
 }
 
 /**
- * Execute commands on a connected switch
+ * Execute SNMP queries or commands on a connected switch
  * 
- * NOTE: In a production environment, this would send commands to a backend service
+ * NOTE: In a production environment, this would send requests to a backend service
  * that executes them on the actual network device.
+ */
+export async function executeSnmpQueries(
+  connectionDetails: SwitchConnectionDetails,
+  oids: string[]
+): Promise<Record<string, any> | null> {
+  try {
+    console.log(`Executing SNMP queries on ${connectionDetails.ip}...`);
+    console.log("OIDs:", oids);
+    
+    // PRODUCTION IMPLEMENTATION NOTES:
+    // 1. In a real implementation, this would make an API call to a backend service
+    // 2. The backend service would execute the SNMP GET/WALK requests for the OIDs
+    // 3. The backend would return the SNMP response data
+    
+    // For demonstration purposes, we provide sample output based on the device type
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    // Generate mock SNMP response data based on device make
+    const make = connectionDetails.make?.toLowerCase() || "unknown";
+    const mockData: Record<string, any> = {};
+    
+    if (make.includes("cisco")) {
+      // Sample Cisco VLAN data
+      mockData["1.3.6.1.4.1.9.9.46.1.3.1.1.2.1.1"] = 1;
+      mockData["1.3.6.1.4.1.9.9.46.1.3.1.1.2.1.10"] = 10;
+      mockData["1.3.6.1.4.1.9.9.46.1.3.1.1.2.1.20"] = 20;
+      mockData["1.3.6.1.4.1.9.9.46.1.3.1.1.2.1.30"] = 30;
+      
+      mockData["1.3.6.1.4.1.9.9.46.1.3.1.1.4.1.1"] = "default";
+      mockData["1.3.6.1.4.1.9.9.46.1.3.1.1.4.1.10"] = "Management";
+      mockData["1.3.6.1.4.1.9.9.46.1.3.1.1.4.1.20"] = "Voice";
+      mockData["1.3.6.1.4.1.9.9.46.1.3.1.1.4.1.30"] = "Guest";
+    } else if (make.includes("juniper")) {
+      // Sample Juniper VLAN data
+      mockData["1.3.6.1.2.1.17.7.1.4.3.1.1.10"] = 10;
+      mockData["1.3.6.1.2.1.17.7.1.4.3.1.1.20"] = 20;
+      mockData["1.3.6.1.2.1.17.7.1.4.3.1.1.30"] = 30;
+      
+      mockData["1.3.6.1.2.1.17.7.1.4.3.1.2.10"] = "Management";
+      mockData["1.3.6.1.2.1.17.7.1.4.3.1.2.20"] = "Voice";
+      mockData["1.3.6.1.2.1.17.7.1.4.3.1.2.30"] = "Guest";
+    } else {
+      // Generic VLAN data for other vendors
+      mockData["1.3.6.1.2.1.17.7.1.4.3.1.1.1"] = 1;
+      mockData["1.3.6.1.2.1.17.7.1.4.3.1.1.10"] = 10;
+      mockData["1.3.6.1.2.1.17.7.1.4.3.1.1.20"] = 20;
+      
+      mockData["1.3.6.1.2.1.17.7.1.4.3.1.2.1"] = "Default";
+      mockData["1.3.6.1.2.1.17.7.1.4.3.1.2.10"] = "VLAN0010";
+      mockData["1.3.6.1.2.1.17.7.1.4.3.1.2.20"] = "VLAN0020";
+    }
+    
+    console.log("PRODUCTION NOTE: This would return actual SNMP response data in production");
+    return mockData;
+  } catch (error) {
+    console.error("Error executing SNMP queries:", error);
+    return null;
+  }
+}
+
+/**
+ * Execute commands on a connected switch (SSH/Telnet fallback)
  */
 export async function executeCommands(
   connectionDetails: SwitchConnectionDetails, 
@@ -273,6 +370,71 @@ VLAN ID  Name
 }
 
 /**
+ * Parse SNMP responses to extract VLAN information
+ */
+function parseSnmpVlanData(snmpData: Record<string, any>, make: string): DiscoveredVlan[] {
+  const vlans: DiscoveredVlan[] = [];
+  const vendorName = make ? make.toLowerCase() : "default";
+  
+  try {
+    // Different vendors use different OID structures for VLANs
+    if (vendorName.includes("cisco")) {
+      // Cisco uses enterprise OIDs for VLANs (1.3.6.1.4.1.9.9.46.1.3.1.1.x)
+      const vlanIds = new Set<number>();
+      const vlanNames: Record<number, string> = {};
+      
+      // Extract VLAN IDs and names from the SNMP data
+      for (const [oid, value] of Object.entries(snmpData)) {
+        if (oid.startsWith("1.3.6.1.4.1.9.9.46.1.3.1.1.2.1.")) {
+          const vlanId = Number(value);
+          vlanIds.add(vlanId);
+        } else if (oid.startsWith("1.3.6.1.4.1.9.9.46.1.3.1.1.4.1.")) {
+          const vlanId = Number(oid.split(".").pop());
+          vlanNames[vlanId] = String(value);
+        }
+      }
+      
+      // Create VLAN objects
+      for (const vlanId of vlanIds) {
+        vlans.push({
+          vlanId,
+          name: vlanNames[vlanId] || `VLAN${vlanId}`,
+          usedBy: []
+        });
+      }
+    } else {
+      // Standard MIB-II VLAN data (1.3.6.1.2.1.17.7.1.4.3.1.x)
+      const vlanIds = new Set<number>();
+      const vlanNames: Record<number, string> = {};
+      
+      // Extract VLAN IDs and names from the SNMP data
+      for (const [oid, value] of Object.entries(snmpData)) {
+        if (oid.startsWith("1.3.6.1.2.1.17.7.1.4.3.1.1.")) {
+          const vlanId = Number(oid.split(".").pop());
+          vlanIds.add(vlanId);
+        } else if (oid.startsWith("1.3.6.1.2.1.17.7.1.4.3.1.2.")) {
+          const vlanId = Number(oid.split(".").pop());
+          vlanNames[vlanId] = String(value);
+        }
+      }
+      
+      // Create VLAN objects
+      for (const vlanId of vlanIds) {
+        vlans.push({
+          vlanId,
+          name: vlanNames[vlanId] || `VLAN${vlanId}`,
+          usedBy: []
+        });
+      }
+    }
+  } catch (error) {
+    console.error(`Error parsing SNMP VLAN data for ${make}:`, error);
+  }
+  
+  return vlans;
+}
+
+/**
  * Retrieve VLAN information from a network switch
  */
 export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDetails): Promise<DiscoveredVlan[]> {
@@ -283,26 +445,56 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
       throw new Error(`Failed to connect to switch at ${connectionDetails.ip}`);
     }
     
-    // Determine which commands to use based on the device make
     const make = connectionDetails.make || "Unknown";
-    let commandSet = VLAN_COMMANDS["Default"];
+    let vlans: DiscoveredVlan[] = [];
     
-    // Find matching command set for the device vendor
-    for (const [vendor, commands] of Object.entries(VLAN_COMMANDS)) {
-      if (make.toLowerCase().includes(vendor.toLowerCase())) {
-        commandSet = commands;
-        break;
+    // Try SNMP first if method is SNMP
+    if (connectionDetails.method === "snmp") {
+      // Determine which OIDs to query based on the device make
+      let oidSet = VLAN_OIDS["Default"];
+      
+      // Find matching OID set for the device vendor
+      for (const [vendor, oids] of Object.entries(VLAN_OIDS)) {
+        if (make.toLowerCase().includes(vendor.toLowerCase())) {
+          oidSet = oids;
+          break;
+        }
+      }
+      
+      // Execute SNMP queries
+      const oids = Object.values(oidSet);
+      const snmpData = await executeSnmpQueries(connectionDetails, oids);
+      
+      if (snmpData) {
+        // Parse the SNMP response data
+        vlans = parseSnmpVlanData(snmpData, make);
+      } else {
+        console.warn(`Failed to get SNMP data from ${connectionDetails.ip}, falling back to command-line`);
       }
     }
     
-    // Execute the commands
-    const output = await executeCommands(connectionDetails, commandSet);
-    if (!output) {
-      throw new Error(`Failed to execute commands on switch at ${connectionDetails.ip}`);
+    // If SNMP failed or wasn't requested, fall back to command-line
+    if (vlans.length === 0 && (connectionDetails.method === "ssh" || connectionDetails.method === "telnet")) {
+      // Determine which commands to use based on the device make
+      let commandSet = VLAN_COMMANDS["Default"];
+      
+      // Find matching command set for the device vendor
+      for (const [vendor, commands] of Object.entries(VLAN_COMMANDS)) {
+        if (make.toLowerCase().includes(vendor.toLowerCase())) {
+          commandSet = commands;
+          break;
+        }
+      }
+      
+      // Execute the commands
+      const output = await executeCommands(connectionDetails, commandSet);
+      if (output) {
+        // Parse the output to extract VLAN information
+        vlans = parseVlanOutput(output, make);
+      } else {
+        throw new Error(`Failed to execute commands on switch at ${connectionDetails.ip}`);
+      }
     }
-    
-    // Parse the output to extract VLAN information
-    const vlans = parseVlanOutput(output, make);
     
     return vlans;
   } catch (error) {
@@ -382,9 +574,11 @@ export async function discoverVlans(
     // For now, use dummy values
     const connectionDetails: SwitchConnectionDetails = {
       ip: switchDevice.ip_address,
-      username: 'admin', // In real implementation: get from subnet
-      password: 'password', // In real implementation: get from subnet
-      method: 'ssh', // In real implementation: get from subnet
+      method: 'snmp',           // Use SNMP as primary method
+      community: 'public',      // Default community string
+      version: '2c',            // Default SNMP version
+      username: 'admin',        // Fallback for SSH/Telnet
+      password: 'password',     // Fallback for SSH/Telnet
       make: switchDevice.make,
       model: switchDevice.model
     };
