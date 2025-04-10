@@ -429,18 +429,22 @@ export async function discoverVlans(
       continue;
     }
     
-    // In a real implementation, you'd get credentials from the subnet information
-    // For now, use defaults
+    // Get connection details from the subnet information
     const connectionDetails: SwitchConnectionDetails = {
       ip: switchDevice.ip_address,
-      method: 'snmp',           // Use SNMP as primary method
-      community: 'public',      // Default community string
-      version: '2c',            // Default SNMP version
-      username: 'admin',        // Fallback for SSH/Telnet
-      password: 'password',     // Fallback for SSH/Telnet
+      method: subnet.access_method || 'snmp',
       make: switchDevice.make,
       model: switchDevice.model
     };
+    
+    // Set credentials based on access method
+    if (connectionDetails.method === 'snmp') {
+      connectionDetails.community = subnet.snmp_community || 'public';
+      connectionDetails.version = subnet.snmp_version || '2c';
+    } else {
+      connectionDetails.username = subnet.username || 'admin';
+      connectionDetails.password = subnet.password || 'password';
+    }
     
     try {
       const vlans = await getVlansFromSwitch(connectionDetails);

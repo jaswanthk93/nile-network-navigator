@@ -30,9 +30,11 @@ const subnetFormSchema = z.object({
     const num = parseInt(value);
     return !isNaN(num) && num >= 0 && num <= 32;
   }, { message: "Prefix must be between 0 and 32." }),
-  username: z.string().min(1, { message: "Username is required." }),
-  password: z.string().min(1, { message: "Password is required." }),
-  accessMethod: z.enum(["telnet", "ssh"]),
+  username: z.string().optional(),
+  password: z.string().optional(),
+  community: z.string().optional(),
+  snmpVersion: z.enum(["1", "2c", "3"]).optional(),
+  accessMethod: z.enum(["telnet", "ssh", "snmp"]),
 });
 
 type SubnetFormValues = z.infer<typeof subnetFormSchema>;
@@ -42,9 +44,11 @@ interface Subnet {
   name: string;
   subnet: string;
   prefix: string;
-  username: string;
-  password: string;
-  accessMethod: "telnet" | "ssh";
+  username?: string;
+  password?: string;
+  community?: string;
+  snmpVersion?: "1" | "2c" | "3";
+  accessMethod: "telnet" | "ssh" | "snmp";
 }
 
 const isSubnetWithin = (subnet1: string, prefix1: string, subnet2: string, prefix2: string): boolean => {
@@ -89,9 +93,13 @@ const SiteSubnetPage = () => {
       prefix: "24",
       username: "",
       password: "",
-      accessMethod: "ssh",
+      community: "public",
+      snmpVersion: "2c",
+      accessMethod: "snmp",
     },
   });
+
+  const accessMethod = subnetForm.watch("accessMethod");
 
   useEffect(() => {
     const loadExistingData = async () => {
@@ -227,13 +235,25 @@ const SiteSubnetPage = () => {
     try {
       const cidr = `${values.subnet}/${values.prefix}`;
       
+      const additionalData: Record<string, any> = {};
+      
+      if (values.accessMethod === "snmp") {
+        additionalData.snmp_community = values.community;
+        additionalData.snmp_version = values.snmpVersion;
+      } else {
+        additionalData.username = values.username;
+        additionalData.password = values.password;
+      }
+      
       const { data, error } = await supabase
         .from('subnets')
         .insert({
           site_id: currentSiteId,
           cidr: cidr,
           description: values.name,
-          user_id: user.id
+          user_id: user.id,
+          access_method: values.accessMethod,
+          ...additionalData
         })
         .select()
         .single();
@@ -245,10 +265,16 @@ const SiteSubnetPage = () => {
         name: values.name,
         subnet: values.subnet,
         prefix: values.prefix,
-        username: values.username,
-        password: values.password,
         accessMethod: values.accessMethod,
       };
+      
+      if (values.accessMethod === "snmp") {
+        newSubnet.community = values.community;
+        newSubnet.snmpVersion = values.snmpVersion;
+      } else {
+        newSubnet.username = values.username;
+        newSubnet.password = values.password;
+      }
       
       setSubnets((prev) => [...prev, newSubnet]);
       setAddingSubnet(false);
@@ -505,36 +531,6 @@ const SiteSubnetPage = () => {
                         />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
-                        <FormField
-                          control={subnetForm.control}
-                          name="username"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Username</FormLabel>
-                              <FormControl>
-                                <Input placeholder="admin" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={subnetForm.control}
-                          name="password"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Password</FormLabel>
-                              <FormControl>
-                                <Input type="password" placeholder="••••••••" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
                       <FormField
                         control={subnetForm.control}
                         name="accessMethod"
@@ -551,6 +547,7 @@ const SiteSubnetPage = () => {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
+                                <SelectItem value="snmp">SNMP</SelectItem>
                                 <SelectItem value="ssh">SSH</SelectItem>
                                 <SelectItem value="telnet">Telnet</SelectItem>
                               </SelectContent>
@@ -559,6 +556,80 @@ const SiteSubnetPage = () => {
                           </FormItem>
                         )}
                       />
+
+                      {accessMethod === 'snmp' ? (
+                        <div className="space-y-4">
+                          <FormField
+                            control={subnetForm.control}
+                            name="community"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>SNMP Community String</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="public" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          
+                          <FormField
+                            control={subnetForm.control}
+                            name="snmpVersion"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>SNMP Version</FormLabel>
+                                <Select
+                                  onValueChange={field.onChange as (value: string) => void}
+                                  defaultValue={field.value}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select SNMP version" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="1">SNMP v1</SelectItem>
+                                    <SelectItem value="2c">SNMP v2c</SelectItem>
+                                    <SelectItem value="3">SNMP v3</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={subnetForm.control}
+                            name="username"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Username</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="admin" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={subnetForm.control}
+                            name="password"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Password</FormLabel>
+                                <FormControl>
+                                  <Input type="password" placeholder="••••••••" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      )}
 
                       <Button type="submit">Add Subnet</Button>
                     </form>
