@@ -1,3 +1,4 @@
+
 /**
  * Device identification utilities for network discovery
  */
@@ -391,10 +392,28 @@ export function identifyDeviceFromMAC(macAddress: string): string | null {
   
   // Check OUI prefixes against our database
   for (const oui of ouiPrefixes) {
+    // Format the OUI with colons for comparison with our database keys
+    const formattedOUI = `${oui.substring(0, 2)}:${oui.substring(2, 4)}:${oui.substring(4, 6)}`;
+    
+    // Check for exact match first
+    if (OUI_DATABASE[formattedOUI]) {
+      return OUI_DATABASE[formattedOUI];
+    }
+    
+    // If no exact match, check for partial matches intelligently
     for (const [prefix, manufacturer] of Object.entries(OUI_DATABASE)) {
       const normalizedPrefix = prefix.replace(/[^A-F0-9]/g, '');
-      if (oui.startsWith(normalizedPrefix) || normalizedPrefix.startsWith(oui)) {
-        return manufacturer;
+      
+      // Ensure we're comparing the same length strings to avoid incorrect matches
+      // This prevents partial matches from trumping exact matches
+      if (normalizedPrefix.length >= oui.length) {
+        if (normalizedPrefix.substring(0, oui.length) === oui) {
+          return manufacturer;
+        }
+      } else if (oui.length >= normalizedPrefix.length) {
+        if (oui.substring(0, normalizedPrefix.length) === normalizedPrefix) {
+          return manufacturer;
+        }
       }
     }
   }
