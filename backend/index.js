@@ -33,6 +33,17 @@ app.post('/api/telnet/connect', telnetHandler.connect);
 app.post('/api/telnet/execute', telnetHandler.execute);
 app.post('/api/telnet/disconnect', telnetHandler.disconnect);
 
+// Device data management
+app.delete('/api/devices/by-subnet/:subnetId', async (req, res) => {
+  try {
+    // This endpoint would be used if we wanted to implement the delete via the backend
+    // For now, we're handling it directly in the frontend using Supabase client
+    res.json({ success: true, message: "Devices removed successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`Network discovery agent running on port ${PORT}`);

@@ -274,23 +274,15 @@ const SiteSubnetPage = () => {
     try {
       console.log("Attempting to delete subnet with ID:", id);
       
-      const { data: associatedDevices, error: checkError } = await supabase
+      const { error: deleteDevicesError } = await supabase
         .from('devices')
-        .select('id')
-        .eq('subnet_id', id);
+        .delete()
+        .eq('subnet_id', id)
+        .eq('user_id', user.id);
       
-      if (checkError) {
-        console.error("Error checking associated devices:", checkError);
-        throw checkError;
-      }
-      
-      if (associatedDevices && associatedDevices.length > 0) {
-        toast({
-          title: "Cannot delete subnet",
-          description: `This subnet has ${associatedDevices.length} device(s) associated with it. Please delete the devices first.`,
-          variant: "destructive",
-        });
-        return;
+      if (deleteDevicesError) {
+        console.error("Error deleting associated devices:", deleteDevicesError);
+        throw deleteDevicesError;
       }
       
       const { error } = await supabase
@@ -308,7 +300,7 @@ const SiteSubnetPage = () => {
       
       toast({
         title: "Subnet removed",
-        description: "The subnet has been removed from your site.",
+        description: "The subnet and any associated devices have been removed from your site.",
       });
     } catch (error) {
       console.error("Error removing subnet:", error);

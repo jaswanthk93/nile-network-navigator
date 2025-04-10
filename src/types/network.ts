@@ -8,3 +8,11 @@ export interface DiscoveredVlan {
   subnet?: string;
   usedBy: string[];
 }
+
+/**
+ * Interface for device deletion request
+ */
+export interface DeviceDeletionRequest {
+  subnetId: string;
+  userId: string;
+}
