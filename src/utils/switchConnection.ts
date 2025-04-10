@@ -1,6 +1,5 @@
-
 import { supabase } from "@/integrations/supabase/client";
-import { DiscoveredVlan } from "../types/network";
+import { DiscoveredVlan, SubnetData } from "../types/network";
 
 // Interface for switch connection details
 export interface SwitchConnectionDetails {
@@ -398,7 +397,7 @@ export async function discoverVlans(
     return [];
   }
   
-  const subnets = subnetsResult.data || [];
+  const subnets = subnetsResult.data as SubnetData[] || [];
   let processedDevices = 0;
   
   // Process each switch
@@ -440,7 +439,7 @@ export async function discoverVlans(
     // Set credentials based on access method
     if (connectionDetails.method === 'snmp') {
       connectionDetails.community = subnet.snmp_community || 'public';
-      connectionDetails.version = subnet.snmp_version || '2c';
+      connectionDetails.version = subnet.snmp_version as "1" | "2c" | "3" || '2c';
     } else {
       connectionDetails.username = subnet.username || 'admin';
       connectionDetails.password = subnet.password || 'password';

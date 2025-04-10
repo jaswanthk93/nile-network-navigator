@@ -37,3 +37,20 @@ export interface SubnetAccess {
     password: string;
   };
 }
+
+/**
+ * Interface for subnet data from database
+ */
+export interface SubnetData {
+  id: string;
+  cidr: string;
+  description: string | null;
+  site_id: string;
+  user_id: string;
+  created_at: string;
+  access_method: "snmp" | "ssh" | "telnet" | null;
+  snmp_community: string | null;
+  snmp_version: "1" | "2c" | "3" | null;
+  username: string | null;
+  password: string | null;
+}

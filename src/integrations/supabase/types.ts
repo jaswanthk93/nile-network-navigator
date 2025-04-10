@@ -101,28 +101,43 @@ export type Database = {
       }
       subnets: {
         Row: {
+          access_method: string | null
           cidr: string
           created_at: string
           description: string | null
           id: string
+          password: string | null
           site_id: string
+          snmp_community: string | null
+          snmp_version: string | null
           user_id: string
+          username: string | null
         }
         Insert: {
+          access_method?: string | null
           cidr: string
           created_at?: string
           description?: string | null
           id?: string
+          password?: string | null
           site_id: string
+          snmp_community?: string | null
+          snmp_version?: string | null
           user_id: string
+          username?: string | null
         }
         Update: {
+          access_method?: string | null
           cidr?: string
           created_at?: string
           description?: string | null
           id?: string
+          password?: string | null
           site_id?: string
+          snmp_community?: string | null
+          snmp_version?: string | null
           user_id?: string
+          username?: string | null
         }
         Relationships: [
           {
