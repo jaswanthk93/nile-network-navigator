@@ -1,4 +1,3 @@
-
 import { callBackendApi, disconnectSession } from "./apiClient";
 import { SwitchConnectionDetails } from "../types/network";
 
@@ -86,3 +85,6 @@ export async function executeCommands(
     return null;
   }
 }
+
+// Re-export the type to make it available for other modules
+export type { SwitchConnectionDetails } from "../types/network";

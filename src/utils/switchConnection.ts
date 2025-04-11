@@ -10,6 +10,7 @@ export {
   connectToSwitch,
   executeCommands
 } from './deviceConnection';
+// Re-export the type properly
 export type { SwitchConnectionDetails } from '../types/network';
 export {
   executeSnmpQueries,
