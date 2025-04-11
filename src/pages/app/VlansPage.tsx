@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -125,13 +124,14 @@ const VlansPage = () => {
             .eq('id', primarySwitch.subnet_id)
             .single();
             
-          // Fixed line: pass correct parameters to discoverVlans as strings
-          const discoveredVlans = await discoverVlans(
+          const result = await discoverVlans(
             primarySwitch.ip_address,
             subnetData?.snmp_community || 'public',
             subnetData?.snmp_version as "1" | "2c" | "3" || '2c',
             primarySwitch.make || 'Cisco'
           );
+          
+          const discoveredVlans = result.vlans;
           
           console.log("Raw discovered VLANs:", discoveredVlans);
           
@@ -158,7 +158,7 @@ const VlansPage = () => {
             const valid: Vlan[] = [];
             const invalid: Vlan[] = [];
             
-            discoveredVlans.forEach((vlan, index) => {
+            discoveredVlans.forEach((vlan) => {
               const mappedVlan: Vlan = {
                 id: `discovered-${vlan.vlanId}`,
                 vlanId: vlan.vlanId,
