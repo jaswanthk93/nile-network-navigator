@@ -53,6 +53,11 @@ exports.discoverVlans = async (req, res) => {
       logger.info(`[SNMP] Sample raw VLAN state data (first entry): ${JSON.stringify(result.rawData.vlanState[0])}`);
     }
     
+    // Add logging for VLAN names
+    if (result.vlans.length > 0) {
+      logger.info(`[SNMP] VLAN names found: ${result.vlans.map(v => `"${v.name}"`).join(', ')}`);
+    }
+    
     res.json(result);
   } catch (error) {
     logger.error('[SNMP] VLAN discovery error:', error);

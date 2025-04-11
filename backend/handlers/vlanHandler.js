@@ -132,7 +132,13 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
         if (result && result.oid && result.value !== undefined) {
           // Log in the raw SNMP format
           const oidStr = Array.isArray(result.oid) ? result.oid.join('.') : result.oid.toString();
-          const valueStr = result.value.toString();
+          let valueStr = "";
+          
+          if (Buffer.isBuffer(result.value)) {
+            valueStr = result.value.toString().trim();
+          } else {
+            valueStr = result.value.toString().trim();
+          }
           
           // Add to raw responses for logging
           rawResponses.vlanName.push({
@@ -155,9 +161,10 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
           
           // Only update names for VLANs we've already identified
           const vlan = vlans.find(v => v.vlanId === vlanId);
-          if (vlan && Buffer.isBuffer(result.value)) {
-            vlan.name = result.value.toString().trim() || `VLAN${vlanId}`;
-            logger.info(`[SNMP] VLAN ${vlanId} name: ${vlan.name}`);
+          if (vlan) {
+            // Always use the returned name value directly without filtering
+            vlan.name = valueStr || `VLAN${vlanId}`;
+            logger.info(`[SNMP] VLAN ${vlanId} name: "${vlan.name}"`);
           }
         }
       }
@@ -193,8 +200,8 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
       totalDiscovered: vlans.length + invalidVlans.length,
       validCount: vlans.length,
       invalidCount: invalidVlans.length,
-      activeCount,
-      inactiveCount,
+      activeCount: vlans.length,
+      inactiveCount: invalidVlans.filter(v => v.reason === 'Inactive VLAN (status not 1)').length,
       // Include raw response data
       rawData: {
         vlanState: rawResponses.vlanState,

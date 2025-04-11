@@ -162,12 +162,7 @@ const VlansPage = () => {
             
             discoveredVlans.forEach((vlan) => {
               const vlanName = vlan.name?.trim();
-              const suggestedSegmentName = 
-                vlanName && 
-                vlanName.length > 2 && 
-                !vlanName.startsWith('VLAN') && 
-                !vlanName.startsWith(`VLAN${vlan.vlanId}`) ? 
-                vlanName : "";
+              const suggestedSegmentName = vlanName && vlanName.length > 0 ? vlanName : "";
               
               const mappedVlan: Vlan = {
                 id: `discovered-${vlan.vlanId}`,
@@ -176,7 +171,7 @@ const VlansPage = () => {
                 segmentName: "",
                 subnet: vlan.subnet || "",
                 usedBy: vlan.usedBy,
-                suggestedSegmentName: suggestedSegmentName || "",
+                suggestedSegmentName: suggestedSegmentName,
                 suggestionAccepted: false,
                 suggestionRejected: false
               };
