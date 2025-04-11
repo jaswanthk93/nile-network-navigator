@@ -17,7 +17,7 @@ exports.discoverDeviceInfo = async (ip, community = 'public', version = '2c') =>
     timeout: 5000
   });
   
-  // Key OIDs for device identification
+  // Key OIDs for device identification - only the essentials
   const oids = [
     "1.3.6.1.2.1.1.1.0",  // sysDescr
     "1.3.6.1.2.1.1.2.0",  // sysObjectID
@@ -26,8 +26,9 @@ exports.discoverDeviceInfo = async (ip, community = 'public', version = '2c') =>
   ];
   
   try {
-    // Get system information
+    // Get system information with a targeted, focused query
     const deviceInfo = {};
+    logger.info(`[SNMP] Executing targeted device discovery: snmpget -v${version} -c ${community} ${ip} ${oids.join(' ')}`);
     
     await new Promise((resolve, reject) => {
       session.get(oids, (error, varbinds) => {
@@ -53,7 +54,7 @@ exports.discoverDeviceInfo = async (ip, community = 'public', version = '2c') =>
           // Log the raw SNMP response
           const oidName = getOidName(oids[i]);
           const valueType = Buffer.isBuffer(value) ? "STRING" : "INTEGER";
-          console.log(`[RAW SNMP] ${oids[i]} (${oidName}) = ${valueType}: ${parsedValue}`);
+          logger.info(`[RAW SNMP] ${oids[i]} (${oidName}) = ${valueType}: ${parsedValue}`);
           
           // Store in deviceInfo
           switch (varbinds[i].oid) {

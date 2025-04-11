@@ -40,13 +40,13 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
   };
   
   try {
-    // Log the exact OIDs we're querying - only once
+    // Log the exact OIDs we're querying
     logger.info(`[SNMP] Using VLAN state OID: ${VLAN_OIDS.vlanList}`);
     logger.info(`[SNMP] Using VLAN name OID: ${VLAN_OIDS.vlanName}`);
     
-    // Walk through VLAN state OID to get VLAN IDs
+    // Step 1: Walk through VLAN state OID to get VLAN IDs - focused only on vlanList OID
     await new Promise((resolve, reject) => {
-      logger.info(`[SNMP] Executing: snmpwalk -v${version} -c ${community} ${ip} ${VLAN_OIDS.vlanList}`);
+      logger.info(`[SNMP] Executing targeted walk: snmpwalk -v${version} -c ${community} ${ip} ${VLAN_OIDS.vlanList}`);
       
       session.walk(VLAN_OIDS.vlanList, function(varbinds) {
         for (const varbind of varbinds) {
@@ -62,7 +62,8 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
             // Log in the raw SNMP format
             logger.info(`[RAW SNMP] SNMPv2-SMI::enterprises.${oidStr.replace(/^1\.3\.6\.1\.4\.1\./g, '')} = INTEGER: ${valueStr}`);
             
-            const oidParts = varbind.oid.split('.');
+            // Parse the VLAN ID from the OID
+            const oidParts = oidStr.split('.');
             const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
             
             // Skip if we've already processed this VLAN ID or it's not a number
@@ -123,10 +124,10 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     // Reset the processed set for name lookups
     processedVlanIds.clear();
     
-    // If we discovered VLANs, fetch their names
+    // Step 2: If we discovered VLANs, fetch their names - focused only on vlanName OID
     if (vlans.length > 0) {
       await new Promise((resolve, reject) => {
-        logger.info(`[SNMP] Executing: snmpwalk -v${version} -c ${community} ${ip} ${VLAN_OIDS.vlanName}`);
+        logger.info(`[SNMP] Executing targeted walk: snmpwalk -v${version} -c ${community} ${ip} ${VLAN_OIDS.vlanName}`);
         
         session.walk(VLAN_OIDS.vlanName, function(varbinds) {
           for (const varbind of varbinds) {
@@ -142,7 +143,8 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
               // Log in the raw SNMP format
               logger.info(`[RAW SNMP] SNMPv2-SMI::enterprises.${oidStr.replace(/^1\.3\.6\.1\.4\.1\./g, '')} = STRING: ${valueStr}`);
               
-              const oidParts = varbind.oid.split('.');
+              // Parse the VLAN ID from the OID
+              const oidParts = oidStr.split('.');
               const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
               
               // Skip if we've already processed this VLAN ID for names or it's invalid
