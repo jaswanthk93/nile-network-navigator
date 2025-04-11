@@ -58,6 +58,39 @@ export async function discoverDeviceWithSNMP(
 }
 
 /**
+ * Get the hostname of a device using SNMP sysName
+ */
+export async function getDeviceHostname(
+  deviceIp: string,
+  community: string = 'public',
+  version: string = '2c'
+): Promise<string | null> {
+  try {
+    console.log(`Getting hostname for ${deviceIp} using SNMP sysName...`);
+    
+    const result = await callBackendApi("/snmp/get", {
+      ip: deviceIp,
+      community,
+      version,
+      oids: ["1.3.6.1.2.1.1.5.0"] // sysName OID
+    });
+    
+    if (result && result.results && result.results["1.3.6.1.2.1.1.5.0"]) {
+      // Extract the hostname part before the domain
+      const fullHostname = result.results["1.3.6.1.2.1.1.5.0"];
+      const hostname = fullHostname.split('.')[0];
+      console.log(`Device hostname: ${hostname} (from ${fullHostname})`);
+      return hostname;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Error getting hostname for ${deviceIp}:`, error);
+    return null;
+  }
+}
+
+/**
  * Execute SNMP queries on a connected switch
  */
 export async function executeSnmpQueries(

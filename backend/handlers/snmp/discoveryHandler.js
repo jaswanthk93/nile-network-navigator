@@ -18,6 +18,11 @@ exports.discoverDevice = async (req, res) => {
     const deviceInfo = await deviceDiscovery.discoverDeviceInfo(ip, community, version);
     logger.info(`[SNMP] Device discovery completed for ${ip} - Identified as: ${deviceInfo.manufacturer || 'Unknown'} ${deviceInfo.model || ''} (${deviceInfo.type || 'Unknown Type'})`);
     
+    // If we have a hostname from sysName, log it
+    if (deviceInfo.sysName) {
+      logger.info(`[SNMP] Device hostname: ${deviceInfo.sysName}`);
+    }
+    
     res.json({ 
       status: 'success',
       device: deviceInfo
@@ -46,10 +51,36 @@ exports.discoverVlans = async (req, res) => {
     logger.info(`[SNMP] 3. IP address interface index OID subtree: 1.3.6.1.2.1.4.20.1.2`);
     logger.info(`[SNMP] 4. IP address subnet mask OID subtree: 1.3.6.1.2.1.4.20.1.3`);
     logger.info(`[SNMP] 5. Interface description OID subtree: 1.3.6.1.2.1.2.2.1.2`);
+    logger.info(`[SNMP] 6. System name OID: 1.3.6.1.2.1.1.5.0`);
+    
+    // Get device hostname first
+    let deviceHostname = null;
+    try {
+      const deviceInfo = await deviceDiscovery.discoverDeviceInfo(ip, community, version);
+      if (deviceInfo && deviceInfo.sysName) {
+        deviceHostname = deviceInfo.sysName.split('.')[0]; // Get hostname part before domain
+        logger.info(`[SNMP] Device hostname: ${deviceHostname}`);
+      }
+    } catch (e) {
+      logger.warn(`[SNMP] Could not retrieve device hostname: ${e.message}`);
+    }
     
     const result = await vlanHandler.discoverVlans(ip, community, version, make);
     
-    logger.info(`[SNMP] VLAN discovery completed for ${ip}: found ${result.vlans.length} valid VLANs`);
+    // If we have a hostname, add it to the result
+    if (deviceHostname) {
+      result.deviceHostname = deviceHostname;
+      
+      // Update usedBy for all VLANs to use hostname instead of IP
+      if (result.vlans && Array.isArray(result.vlans)) {
+        result.vlans = result.vlans.map(vlan => ({
+          ...vlan,
+          usedBy: [deviceHostname]
+        }));
+      }
+    }
+    
+    logger.info(`[SNMP] VLAN discovery completed for ${deviceHostname || ip}: found ${result.vlans.length} valid VLANs`);
     
     // Log some sample raw data for verification
     if (result.rawData && result.rawData.vlanState && result.rawData.vlanState.length > 0) {

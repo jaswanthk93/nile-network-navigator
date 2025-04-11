@@ -4,7 +4,7 @@ import { connectToSwitch } from "../deviceConnection";
 import { executeCommands } from "../deviceConnection";
 import { parseVlanOutput } from "./vlanParsing";
 import { isValidVlanId } from "../networkValidation";
-import { callBackendApi, disconnectSession } from "../apiClient";
+import { callBackendApi, disconnectSession, getDeviceHostname } from "../apiClient";
 
 /**
  * Discover VLANs from a network switch using specified connection details
@@ -16,6 +16,7 @@ export async function discoverVlans(
   make: string = "Cisco"
 ): Promise<{
   vlans: DiscoveredVlan[];
+  deviceHostname?: string;
   rawData?: {
     vlanState: { oid: string; value: string }[];
     vlanName: { oid: string; value: string }[];
@@ -27,6 +28,15 @@ export async function discoverVlans(
   console.log(`Discovering VLANs from ${ip} via SNMP...`);
   
   try {
+    // Get device hostname first
+    let deviceHostname = null;
+    try {
+      deviceHostname = await getDeviceHostname(ip, community, version);
+      console.log(`Using hostname for device: ${deviceHostname || 'Not available'}`);
+    } catch (e) {
+      console.warn(`Could not retrieve device hostname: ${e.message}`);
+    }
+    
     // Use the backend agent for VLAN discovery
     const result = await callBackendApi("/snmp/discover-vlans", {
       ip,
@@ -42,6 +52,10 @@ export async function discoverVlans(
     
     // Log the raw VLAN IDs returned from backend for debugging
     console.log(`Raw VLAN IDs from backend: ${result.vlans.map((v: any) => v.vlanId).join(', ')}`);
+    
+    // Use hostname from backend response if available
+    const deviceIdentifier = result.deviceHostname || deviceHostname || ip;
+    console.log(`Using device identifier: ${deviceIdentifier}`);
     
     // Process VLAN data and handle duplicates
     const processedVlans = new Map<number, DiscoveredVlan>();
@@ -75,7 +89,8 @@ export async function discoverVlans(
         vlanId: vlan.vlanId,
         name: vlan.name,
         subnet: vlan.subnet,
-        usedBy: Array.isArray(vlan.usedBy) ? vlan.usedBy : [ip]
+        // Use hostname instead of IP address if available
+        usedBy: Array.isArray(vlan.usedBy) && vlan.usedBy.length > 0 ? vlan.usedBy : [deviceIdentifier]
       });
     }
     
@@ -98,9 +113,9 @@ export async function discoverVlans(
     
     // Log active vs inactive counts if available in the response
     if (result.activeCount !== undefined && result.inactiveCount !== undefined) {
-      console.log(`Discovered ${validVlans.length} active VLANs from ${ip} (backend reported ignoring ${result.inactiveCount} inactive VLANs)`);
+      console.log(`Discovered ${validVlans.length} active VLANs from ${deviceIdentifier} (backend reported ignoring ${result.inactiveCount} inactive VLANs)`);
     } else {
-      console.log(`Discovered ${validVlans.length} VLANs from ${ip}`);
+      console.log(`Discovered ${validVlans.length} VLANs from ${deviceIdentifier}`);
     }
     
     if (validVlans.length > 4094) {
@@ -108,12 +123,14 @@ export async function discoverVlans(
       // This shouldn't happen since the backend now enforces this, but just in case:
       return {
         vlans: validVlans.slice(0, 4094),
+        deviceHostname: deviceIdentifier !== ip ? deviceIdentifier : undefined,
         rawData: result.rawData
       };
     }
     
     return {
       vlans: validVlans,
+      deviceHostname: deviceIdentifier !== ip ? deviceIdentifier : undefined,
       rawData: result.rawData
     };
   } catch (error) {
