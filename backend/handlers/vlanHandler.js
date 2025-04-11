@@ -31,9 +31,10 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
   
   const vlans = [];
   const invalidVlans = [];
+  const processedVlanIds = new Set(); // Track already processed VLAN IDs to prevent duplicates
   
   try {
-    // Log the exact OIDs we're querying
+    // Log the exact OIDs we're querying - only once
     logger.info(`[SNMP] Using VLAN state OID: ${VLAN_OIDS.vlanList}`);
     logger.info(`[SNMP] Using VLAN name OID: ${VLAN_OIDS.vlanName}`);
     
@@ -47,6 +48,11 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
             const oidParts = varbind.oid.split('.');
             const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
             
+            // Skip if we've already processed this VLAN ID
+            if (processedVlanIds.has(vlanId)) {
+              continue;
+            }
+            
             // Parse the state value (1 = operational, 2 = suspended, etc.)
             let stateValue = 0;
             if (Buffer.isBuffer(varbind.value)) {
@@ -55,7 +61,10 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
               stateValue = varbind.value;
             }
             
-            // IMPORTANT CHANGE: Only include VLANs with status 1 (active)
+            // Mark this VLAN ID as processed
+            processedVlanIds.add(vlanId);
+            
+            // Only include VLANs with status 1 (active)
             if (!isNaN(vlanId)) {
               // Only include valid VLAN IDs between 1 and 4094 AND with state value of 1 (active)
               if (isValidVlanId(vlanId) && stateValue === 1) {
@@ -93,6 +102,9 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
       });
     });
     
+    // Reset the processed set for name lookups
+    processedVlanIds.clear();
+    
     // If we discovered VLANs, fetch their names
     if (vlans.length > 0) {
       await new Promise((resolve, reject) => {
@@ -103,6 +115,13 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
             if (!snmp.isVarbindError(varbind)) {
               const oidParts = varbind.oid.split('.');
               const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
+              
+              // Skip if we've already processed this VLAN ID for names
+              if (processedVlanIds.has(vlanId)) {
+                continue;
+              }
+              
+              processedVlanIds.add(vlanId);
               
               if (!isNaN(vlanId)) {
                 // Only update names for VLANs we've already identified
@@ -148,4 +167,3 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     session.close();
   }
 };
-
