@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -346,20 +345,21 @@ const VlansPage = () => {
       setLoading(true);
 
       const vlansToSave = vlans.map(vlan => {
-        // Fix: If the ID starts with 'discovered-' or 'new-', generate a new UUID
-        // instead of setting it to undefined, which causes the null constraint violation
-        const needsNewId = vlan.id.startsWith('discovered-') || vlan.id.startsWith('new-');
+        const isNewVlan = vlan.id.startsWith('discovered-') || vlan.id.startsWith('new-');
         
-        return {
-          // If we need a new ID, don't include it - Supabase will generate one with the default
-          // Only include an ID if it's a valid UUID from the database
-          id: needsNewId ? undefined : vlan.id,
+        const vlanObject = {
           user_id: user!.id,
           site_id: localStorage.getItem('currentSiteId') || null,
           vlan_id: vlan.vlanId,
           name: vlan.name,
           description: vlan.segmentName
         };
+
+        if (!isNewVlan) {
+          vlanObject.id = vlan.id;
+        }
+        
+        return vlanObject;
       });
 
       console.log("Saving VLANs with data:", vlansToSave);
