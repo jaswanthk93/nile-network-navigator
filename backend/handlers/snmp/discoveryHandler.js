@@ -43,6 +43,7 @@ exports.discoverVlans = async (req, res) => {
     logger.info(`[SNMP] Will execute TWO sequential targeted walks ONLY:`);
     logger.info(`[SNMP] 1. VLAN ID OID walk: 1.3.6.1.4.1.9.9.46.1.3.1.1.2`);
     logger.info(`[SNMP] 2. VLAN name OID walk: 1.3.6.1.4.1.9.9.46.1.3.1.1.4`);
+    logger.info(`[SNMP] NOTE: Each walk may return multiple batches of data; each batch will be processed separately`);
     
     const result = await vlanHandler.discoverVlans(ip, community, version, make);
     

@@ -39,6 +39,12 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     vlanName: []
   };
   
+  // Add counters to track batch processing
+  let vlanIdBatchCount = 0;
+  let vlanIdTotalCount = 0;
+  let vlanNameBatchCount = 0;
+  let vlanNameTotalCount = 0;
+  
   try {
     // Log the exact OIDs we're querying - be very explicit
     logger.info(`[SNMP] STRICT TARGET: Using ONLY the following OIDs:`);
@@ -52,7 +58,12 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     await new Promise((resolve, reject) => {
       // Explicitly restrict walk to ONLY the specific VLAN OID
       session.walk(VLAN_OIDS.vlanList, function(varbinds) {
+        // Log batch reception
+        vlanIdBatchCount++;
+        logger.info(`[SNMP] VLAN ID Walk - Received batch #${vlanIdBatchCount} with ${varbinds.length} entries`);
+        
         for (const varbind of varbinds) {
+          vlanIdTotalCount++;
           if (!snmp.isVarbindError(varbind)) {
             // Capture raw response for logging
             const valueStr = varbind.value.toString();
@@ -118,7 +129,8 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
           reject(error);
         } else {
           // Log the actual VLANs found for debugging
-          logger.info(`[SNMP] First walk complete. Found these active VLAN IDs: ${vlans.map(v => v.vlanId).join(', ')}`);
+          logger.info(`[SNMP] First walk complete. Received ${vlanIdBatchCount} batches with total of ${vlanIdTotalCount} VLAN ID entries.`);
+          logger.info(`[SNMP] Found these active VLAN IDs: ${vlans.map(v => v.vlanId).join(', ')}`);
           resolve();
         }
       });
@@ -135,7 +147,12 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
       await new Promise((resolve, reject) => {
         // Explicitly restrict walk to ONLY the specific VLAN name OID
         session.walk(VLAN_OIDS.vlanName, function(varbinds) {
+          // Log batch reception
+          vlanNameBatchCount++;
+          logger.info(`[SNMP] VLAN Name Walk - Received batch #${vlanNameBatchCount} with ${varbinds.length} entries`);
+          
           for (const varbind of varbinds) {
+            vlanNameTotalCount++;
             if (!snmp.isVarbindError(varbind)) {
               // Capture raw response for logging
               const valueStr = varbind.value.toString();
@@ -172,7 +189,7 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
             logger.error(`[SNMP] Error walking VLAN name OID on ${ip}:`, error);
             reject(error);
           } else {
-            logger.info(`[SNMP] Second walk complete. Updated names for VLANs.`);
+            logger.info(`[SNMP] Second walk complete. Received ${vlanNameBatchCount} batches with total of ${vlanNameTotalCount} VLAN name entries.`);
             resolve();
           }
         });
@@ -201,6 +218,7 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     
     logger.info(`[SNMP] Found ${activeCount} active VLANs on ${ip} (ignored ${inactiveCount} inactive and ${invalidVlans.length - inactiveCount} invalid VLANs)`);
     logger.info(`[SNMP] Final active VLAN IDs: ${vlans.map(v => v.vlanId).join(', ')}`);
+    logger.info(`[SNMP] VLAN processing summary: ID walk had ${vlanIdBatchCount} batches (${vlanIdTotalCount} total entries), Name walk had ${vlanNameBatchCount} batches (${vlanNameTotalCount} total entries)`);
     
     return { 
       vlans,
