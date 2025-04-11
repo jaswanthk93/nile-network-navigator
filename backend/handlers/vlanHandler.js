@@ -10,6 +10,16 @@ const VLAN_OIDS = {
   vlanName: "1.3.6.1.4.1.9.9.46.1.3.1.1.4"
 };
 
+// IP and Interface OIDs for subnet discovery
+const SUBNET_OIDS = {
+  // ipAdEntIfIndex - maps IP addresses to interface indices
+  ipAddrIfIndex: "1.3.6.1.2.1.4.20.1.2",
+  // ipAdEntNetMask - provides subnet masks for IP addresses
+  ipAddrNetMask: "1.3.6.1.2.1.4.20.1.3",
+  // ifDescr - provides interface descriptions (including VLAN references)
+  ifDescr: "1.3.6.1.2.1.2.2.1.2"
+};
+
 /**
  * Discover VLANs using SNMP
  * @param {string} ip - The IP address of the device
@@ -36,7 +46,10 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
   // Store raw SNMP responses for logging
   const rawResponses = {
     vlanState: [],
-    vlanName: []
+    vlanName: [],
+    ipAddrIfIndex: [],
+    ipAddrNetMask: [],
+    ifDescr: []
   };
   
   try {
@@ -170,6 +183,180 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
       }
     }
     
+    // STEP 3: Discover subnet information for the VLANs
+    logger.info(`[SNMP] Starting subnet discovery for VLANs...`);
+    
+    // Map to store subnet information by interface index
+    const subnets = {};
+    const ifIndexToIp = {};
+    const ifIndexToVlan = {};
+    
+    // Step 3a: Get IP address to interface index mappings
+    logger.info(`[SNMP] STRICT TARGET: 3. IP address interface index OID: ${SUBNET_OIDS.ipAddrIfIndex}`);
+    logger.info(`[SNMP] Executing targeted subtree call for IP address interface indices with base OID ${SUBNET_OIDS.ipAddrIfIndex}`);
+    
+    const ipAddrIfIndexResults = await performTargetedOperation(session, SUBNET_OIDS.ipAddrIfIndex);
+    logger.info(`[SNMP] IP address interface index discovery complete - received ${ipAddrIfIndexResults.length} OID responses`);
+    
+    // Process IP address to interface index mappings
+    for (const result of ipAddrIfIndexResults) {
+      if (result && result.oid && result.value !== undefined) {
+        const oidStr = Array.isArray(result.oid) ? result.oid.join('.') : result.oid.toString();
+        const valueStr = result.value.toString();
+        
+        // Extract IP address from OID (format: 1.3.6.1.2.1.4.20.1.2.10.1.251.126)
+        const oidParts = oidStr.split('.');
+        const ipParts = oidParts.slice(-4); // Last 4 octets form the IP address
+        const ipAddress = ipParts.join('.');
+        
+        // Extract interface index from value
+        let ifIndex = parseInt(valueStr, 10);
+        if (isNaN(ifIndex)) {
+          if (Buffer.isBuffer(result.value)) {
+            ifIndex = parseInt(result.value.toString(), 10);
+          }
+        }
+        
+        if (!isNaN(ifIndex)) {
+          // Store mapping of interface index to IP address
+          ifIndexToIp[ifIndex] = ipAddress;
+          
+          // Log the raw data
+          rawResponses.ipAddrIfIndex.push({
+            oid: oidStr,
+            value: valueStr,
+            ipAddress,
+            ifIndex
+          });
+          
+          logger.info(`[RAW SNMP IP-IF] IP-MIB::ipAdEntIfIndex.${ipAddress} = INTEGER: ${ifIndex}`);
+        }
+      }
+    }
+    
+    // Step 3b: Get subnet masks for IP addresses
+    logger.info(`[SNMP] STRICT TARGET: 4. IP address subnet mask OID: ${SUBNET_OIDS.ipAddrNetMask}`);
+    logger.info(`[SNMP] Executing targeted subtree call for IP address subnet masks with base OID ${SUBNET_OIDS.ipAddrNetMask}`);
+    
+    const ipAddrNetMaskResults = await performTargetedOperation(session, SUBNET_OIDS.ipAddrNetMask);
+    logger.info(`[SNMP] IP address subnet mask discovery complete - received ${ipAddrNetMaskResults.length} OID responses`);
+    
+    // Process subnet mask results
+    for (const result of ipAddrNetMaskResults) {
+      if (result && result.oid && result.value !== undefined) {
+        const oidStr = Array.isArray(result.oid) ? result.oid.join('.') : result.oid.toString();
+        let subnetMask = "";
+        
+        if (Buffer.isBuffer(result.value)) {
+          subnetMask = result.value.toString().trim();
+        } else {
+          subnetMask = result.value.toString().trim();
+        }
+        
+        // Extract IP address from OID (format: 1.3.6.1.2.1.4.20.1.3.10.1.251.126)
+        const oidParts = oidStr.split('.');
+        const ipParts = oidParts.slice(-4); // Last 4 octets form the IP address
+        const ipAddress = ipParts.join('.');
+        
+        // Find the interface index for this IP
+        const ifIndex = Object.keys(ifIndexToIp).find(idx => ifIndexToIp[idx] === ipAddress);
+        
+        if (ifIndex) {
+          // Convert subnet mask to CIDR notation
+          const cidrLength = netmaskToCidr(subnetMask);
+          const subnet = `${ipAddress}/${cidrLength}`;
+          
+          // Store subnet information by interface index
+          subnets[ifIndex] = subnet;
+          
+          // Log the raw data
+          rawResponses.ipAddrNetMask.push({
+            oid: oidStr,
+            value: subnetMask,
+            ipAddress,
+            subnet
+          });
+          
+          logger.info(`[RAW SNMP SUBNET] IP-MIB::ipAdEntNetMask.${ipAddress} = IpAddress: ${subnetMask} (${subnet})`);
+        }
+      }
+    }
+    
+    // Step 3c: Get interface descriptions to map to VLAN IDs
+    logger.info(`[SNMP] STRICT TARGET: 5. Interface description OID: ${SUBNET_OIDS.ifDescr}`);
+    logger.info(`[SNMP] Executing targeted subtree call for interface descriptions with base OID ${SUBNET_OIDS.ifDescr}`);
+    
+    const ifDescrResults = await performTargetedOperation(session, SUBNET_OIDS.ifDescr);
+    logger.info(`[SNMP] Interface description discovery complete - received ${ifDescrResults.length} OID responses`);
+    
+    // Process interface description results
+    for (const result of ifDescrResults) {
+      if (result && result.oid && result.value !== undefined) {
+        const oidStr = Array.isArray(result.oid) ? result.oid.join('.') : result.oid.toString();
+        let ifDescr = "";
+        
+        if (Buffer.isBuffer(result.value)) {
+          ifDescr = result.value.toString().trim();
+        } else {
+          ifDescr = result.value.toString().trim();
+        }
+        
+        // Extract interface index from OID (format: 1.3.6.1.2.1.2.2.1.2.77)
+        const oidParts = oidStr.split('.');
+        const ifIndex = parseInt(oidParts[oidParts.length - 1], 10);
+        
+        if (!isNaN(ifIndex)) {
+          // Look for "VlanXXX" pattern in interface description
+          const vlanMatch = ifDescr.match(/[Vv]lan(\d+)/);
+          if (vlanMatch) {
+            const vlanId = parseInt(vlanMatch[1], 10);
+            
+            // Store mapping of interface index to VLAN ID
+            ifIndexToVlan[ifIndex] = vlanId;
+            
+            // Log the raw data
+            rawResponses.ifDescr.push({
+              oid: oidStr,
+              value: ifDescr,
+              ifIndex,
+              vlanId
+            });
+            
+            logger.info(`[RAW SNMP IF-DESCR] IF-MIB::ifDescr.${ifIndex} = STRING: ${ifDescr} (VLAN ${vlanId})`);
+          }
+        }
+      }
+    }
+    
+    // Step 3d: Map subnet information to VLANs
+    logger.info(`[SNMP] Mapping subnet information to VLANs...`);
+    
+    // Create lookup map from VLAN IDs to subnet info
+    const vlanToSubnet = {};
+    
+    // Map interfaces to VLANs and then to subnets
+    Object.keys(ifIndexToVlan).forEach(ifIndex => {
+      const vlanId = ifIndexToVlan[ifIndex];
+      const subnet = subnets[ifIndex];
+      
+      if (vlanId && subnet) {
+        vlanToSubnet[vlanId] = subnet;
+        logger.info(`[SNMP] Mapped VLAN ${vlanId} to subnet ${subnet} via interface ${ifIndex}`);
+      }
+    });
+    
+    // Update VLAN objects with subnet information
+    for (const vlan of vlans) {
+      if (vlanToSubnet[vlan.vlanId]) {
+        vlan.subnet = vlanToSubnet[vlan.vlanId];
+        logger.info(`[SNMP] Associated VLAN ${vlan.vlanId} with subnet ${vlan.subnet}`);
+      }
+    }
+    
+    // Log subnet discovery summary
+    const vlansWithSubnets = vlans.filter(v => v.subnet).length;
+    logger.info(`[SNMP] Subnet discovery found subnets for ${vlansWithSubnets} out of ${vlans.length} VLANs`);
+    
     // Handle the case of too many VLANs - limit to valid range if needed
     if (vlans.length > 4094) {
       logger.warn(`[SNMP] Found ${vlans.length} VLANs which exceeds the maximum of 4094. Limiting to the valid range.`);
@@ -193,6 +380,11 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     logger.info(`[SNMP] Found ${activeCount} active VLANs on ${ip} (ignored ${inactiveCount} inactive and ${invalidVlans.length - inactiveCount} invalid VLANs)`);
     logger.info(`[SNMP] Final active VLAN IDs: ${vlans.map(v => v.vlanId).join(', ')}`);
     logger.info(`[SNMP] VLAN processing summary: Found ${vlans.length} active VLANs out of ${vlans.length + invalidVlans.length} total VLANs`);
+    logger.info(`[SNMP] VLAN names found: ${vlans.map(v => `"${v.name}"`).join(', ')}`);
+    
+    if (vlansWithSubnets > 0) {
+      logger.info(`[SNMP] VLAN subnets found: ${vlans.filter(v => v.subnet).map(v => `VLAN ${v.vlanId}: ${v.subnet}`).join(', ')}`);
+    }
     
     return { 
       vlans,
@@ -205,7 +397,10 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
       // Include raw response data
       rawData: {
         vlanState: rawResponses.vlanState,
-        vlanName: rawResponses.vlanName
+        vlanName: rawResponses.vlanName,
+        ipAddrIfIndex: rawResponses.ipAddrIfIndex,
+        ipAddrNetMask: rawResponses.ipAddrNetMask,
+        ifDescr: rawResponses.ifDescr
       }
     };
   } finally {
@@ -252,4 +447,22 @@ async function performTargetedOperation(session, baseOid) {
       }
     });
   });
+}
+
+/**
+ * Convert subnet mask to CIDR notation
+ * @param {string} netmask - The subnet mask (e.g. 255.255.255.0)
+ * @returns {number} - The CIDR notation (e.g. 24)
+ */
+function netmaskToCidr(netmask) {
+  const parts = netmask.split('.').map(Number);
+  let cidr = 0;
+  
+  for (let i = 0; i < parts.length; i++) {
+    // Convert each octet to binary and count the 1s
+    const binaryOctet = (parts[i] >>> 0).toString(2);
+    cidr += binaryOctet.split('1').length - 1;
+  }
+  
+  return cidr;
 }

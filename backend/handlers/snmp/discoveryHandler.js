@@ -40,9 +40,12 @@ exports.discoverVlans = async (req, res) => {
     }
     
     logger.info(`[SNMP] Starting STRICTLY focused VLAN discovery for ${ip} using SNMPv${version}`);
-    logger.info(`[SNMP] Will execute TWO sequential targeted operations ONLY:`);
+    logger.info(`[SNMP] Will execute sequential targeted operations ONLY:`);
     logger.info(`[SNMP] 1. VLAN ID OID subtree: 1.3.6.1.4.1.9.9.46.1.3.1.1.2`);
     logger.info(`[SNMP] 2. VLAN name OID subtree: 1.3.6.1.4.1.9.9.46.1.3.1.1.4`);
+    logger.info(`[SNMP] 3. IP address interface index OID subtree: 1.3.6.1.2.1.4.20.1.2`);
+    logger.info(`[SNMP] 4. IP address subnet mask OID subtree: 1.3.6.1.2.1.4.20.1.3`);
+    logger.info(`[SNMP] 5. Interface description OID subtree: 1.3.6.1.2.1.2.2.1.2`);
     
     const result = await vlanHandler.discoverVlans(ip, community, version, make);
     
@@ -56,6 +59,15 @@ exports.discoverVlans = async (req, res) => {
     // Add logging for VLAN names
     if (result.vlans.length > 0) {
       logger.info(`[SNMP] VLAN names found: ${result.vlans.map(v => `"${v.name}"`).join(', ')}`);
+    }
+    
+    // Add logging for subnet information
+    const vlansWithSubnets = result.vlans.filter(v => v.subnet).length;
+    if (vlansWithSubnets > 0) {
+      logger.info(`[SNMP] Subnet information found for ${vlansWithSubnets} VLANs`);
+      logger.info(`[SNMP] Sample subnet mappings: ${result.vlans.filter(v => v.subnet).slice(0, 5).map(v => `VLAN ${v.vlanId}: ${v.subnet}`).join(', ')}`);
+    } else {
+      logger.info(`[SNMP] No subnet information found for any VLANs`);
     }
     
     res.json(result);

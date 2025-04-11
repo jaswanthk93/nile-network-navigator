@@ -19,6 +19,9 @@ export async function discoverVlans(
   rawData?: {
     vlanState: { oid: string; value: string }[];
     vlanName: { oid: string; value: string }[];
+    ipAddrIfIndex?: { oid: string; value: string; ipAddress: string; ifIndex: number }[];
+    ipAddrNetMask?: { oid: string; value: string; ipAddress: string; subnet: string }[];
+    ifDescr?: { oid: string; value: string; ifIndex: number; vlanId: number }[];
   };
 }> {
   console.log(`Discovering VLANs from ${ip} via SNMP...`);
@@ -81,6 +84,17 @@ export async function discoverVlans(
     
     // Log the final list of VLANs for clarity
     console.log(`Processed ${validVlans.length} valid VLANs, IDs: ${validVlans.map(v => v.vlanId).join(', ')}`);
+    
+    // Log subnet information if available
+    const vlansWithSubnets = validVlans.filter(v => v.subnet).length;
+    if (vlansWithSubnets > 0) {
+      console.log(`Found subnet information for ${vlansWithSubnets} VLANs:`);
+      validVlans.filter(v => v.subnet).forEach(v => {
+        console.log(`VLAN ${v.vlanId} (${v.name}): ${v.subnet}`);
+      });
+    } else {
+      console.log("No subnet information found for any VLANs");
+    }
     
     // Log active vs inactive counts if available in the response
     if (result.activeCount !== undefined && result.inactiveCount !== undefined) {
