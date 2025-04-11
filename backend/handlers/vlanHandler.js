@@ -1,4 +1,3 @@
-
 const snmp = require('net-snmp');
 const { isValidVlanId } = require('../utils/validation');
 
@@ -48,8 +47,19 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
             const oidParts = varbind.oid.split('.');
             const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
             
-            // Skip if we've already processed this VLAN ID
-            if (processedVlanIds.has(vlanId)) {
+            // Skip if we've already processed this VLAN ID or it's not a number
+            if (processedVlanIds.has(vlanId) || isNaN(vlanId)) {
+              continue;
+            }
+            
+            // Extra validation for VLAN ID range - must be 1-4094
+            if (vlanId < 1 || vlanId > 4094) {
+              logger.warn(`[SNMP] Ignoring invalid VLAN ID ${vlanId} from ${ip} (outside valid range 1-4094)`);
+              invalidVlans.push({
+                vlanId,
+                reason: 'Invalid VLAN ID range'
+              });
+              processedVlanIds.add(vlanId); // Mark as processed anyway to avoid duplicates
               continue;
             }
             
@@ -64,31 +74,22 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
             // Mark this VLAN ID as processed
             processedVlanIds.add(vlanId);
             
-            // Only include VLANs with status 1 (active)
-            if (!isNaN(vlanId)) {
-              // Only include valid VLAN IDs between 1 and 4094 AND with state value of 1 (active)
-              if (isValidVlanId(vlanId) && stateValue === 1) {
-                logger.info(`[SNMP] Found active VLAN ${vlanId} with state ${stateValue} on ${ip}`);
-                vlans.push({
-                  vlanId,
-                  name: `VLAN${vlanId}`, // Default name, will be updated
-                  state: 'active',
-                  usedBy: [ip]
-                });
-              } else if (isValidVlanId(vlanId) && stateValue !== 1) {
-                // Log VLANs that were skipped due to inactive status
-                logger.warn(`[SNMP] Skipping inactive VLAN ${vlanId} with state ${stateValue} from ${ip}`);
-                invalidVlans.push({
-                  vlanId,
-                  reason: 'Inactive VLAN (status not 1)'
-                });
-              } else {
-                logger.warn(`[SNMP] Ignoring invalid VLAN ID ${vlanId} from ${ip} (outside valid range)`);
-                invalidVlans.push({
-                  vlanId,
-                  reason: 'Invalid VLAN ID range'
-                });
-              }
+            // Only include VLANs with state value of 1 (active)
+            if (stateValue === 1) {
+              logger.info(`[SNMP] Found active VLAN ${vlanId} with state ${stateValue} on ${ip}`);
+              vlans.push({
+                vlanId,
+                name: `VLAN${vlanId}`, // Default name, will be updated
+                state: 'active',
+                usedBy: [ip]
+              });
+            } else {
+              // Log VLANs that were skipped due to inactive status
+              logger.warn(`[SNMP] Skipping inactive VLAN ${vlanId} with state ${stateValue} from ${ip}`);
+              invalidVlans.push({
+                vlanId,
+                reason: 'Inactive VLAN (status not 1)'
+              });
             }
           }
         }
@@ -116,20 +117,18 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
               const oidParts = varbind.oid.split('.');
               const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
               
-              // Skip if we've already processed this VLAN ID for names
-              if (processedVlanIds.has(vlanId)) {
+              // Skip if we've already processed this VLAN ID for names or it's invalid
+              if (processedVlanIds.has(vlanId) || isNaN(vlanId) || vlanId < 1 || vlanId > 4094) {
                 continue;
               }
               
               processedVlanIds.add(vlanId);
               
-              if (!isNaN(vlanId)) {
-                // Only update names for VLANs we've already identified
-                const vlan = vlans.find(v => v.vlanId === vlanId);
-                if (vlan && Buffer.isBuffer(varbind.value)) {
-                  vlan.name = varbind.value.toString().trim() || `VLAN${vlanId}`;
-                  logger.info(`[SNMP] VLAN ${vlanId} name: ${vlan.name}`);
-                }
+              // Only update names for VLANs we've already identified
+              const vlan = vlans.find(v => v.vlanId === vlanId);
+              if (vlan && Buffer.isBuffer(varbind.value)) {
+                vlan.name = varbind.value.toString().trim() || `VLAN${vlanId}`;
+                logger.info(`[SNMP] VLAN ${vlanId} name: ${vlan.name}`);
               }
             }
           }
@@ -144,8 +143,21 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
       });
     }
     
-    // Sort VLANs by ID for consistent output
-    vlans.sort((a, b) => a.vlanId - b.vlanId);
+    // Handle the case of too many VLANs - limit to valid range if needed
+    if (vlans.length > 4094) {
+      logger.warn(`[SNMP] Found ${vlans.length} VLANs which exceeds the maximum of 4094. Limiting to the valid range.`);
+      // Sort and keep only the first 4094 valid VLANs
+      vlans.sort((a, b) => a.vlanId - b.vlanId);
+      const excessVlans = vlans.splice(4094); 
+      
+      // Move excess VLANs to invalid list
+      excessVlans.forEach(vlan => {
+        invalidVlans.push({
+          vlanId: vlan.vlanId,
+          reason: 'Exceeded maximum valid VLAN count (4094)'
+        });
+      });
+    }
     
     // Add counts for active VLANs specifically
     const activeCount = vlans.length;

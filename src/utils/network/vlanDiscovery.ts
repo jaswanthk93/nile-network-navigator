@@ -31,20 +31,26 @@ export async function discoverVlans(
       return [];
     }
     
-    // Filter out any invalid VLANs for safety (should already be done on backend now)
+    // Double-check to ensure frontend also enforces the valid VLAN ID range
     const validVlans = result.vlans.filter((vlan: any) => 
       isValidVlanId(vlan.vlanId)
     );
     
     if (result.vlans.length !== validVlans.length) {
-      console.warn(`Filtered out ${result.vlans.length - validVlans.length} invalid VLANs`);
+      console.warn(`Additional filtering removed ${result.vlans.length - validVlans.length} invalid VLANs on frontend`);
     }
     
     // Log active vs inactive counts if available in the response
     if (result.activeCount !== undefined && result.inactiveCount !== undefined) {
-      console.log(`Discovered ${validVlans.length} active VLANs from ${ip} (ignored ${result.inactiveCount} inactive VLANs)`);
+      console.log(`Discovered ${validVlans.length} active VLANs from ${ip} (backend reported ignoring ${result.inactiveCount} inactive VLANs)`);
     } else {
       console.log(`Discovered ${validVlans.length} VLANs from ${ip}`);
+    }
+    
+    if (validVlans.length > 4094) {
+      console.error(`Found ${validVlans.length} VLANs which exceeds the maximum of 4094!`);
+      // This shouldn't happen since the backend now enforces this, but just in case:
+      return validVlans.slice(0, 4094);
     }
     
     return validVlans;
@@ -53,4 +59,3 @@ export async function discoverVlans(
     return [];
   }
 }
-
