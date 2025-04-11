@@ -14,7 +14,13 @@ export async function discoverVlans(
   community: string = "public",
   version: "1" | "2c" | "3" = "2c",
   make: string = "Cisco"
-): Promise<DiscoveredVlan[]> {
+): Promise<{
+  vlans: DiscoveredVlan[];
+  rawData?: {
+    vlanState: { oid: string; value: string }[];
+    vlanName: { oid: string; value: string }[];
+  };
+}> {
   console.log(`Discovering VLANs from ${ip} via SNMP...`);
   
   try {
@@ -28,7 +34,7 @@ export async function discoverVlans(
     
     if (!result.vlans || !Array.isArray(result.vlans)) {
       console.error("Invalid response format from VLAN discovery");
-      return [];
+      return { vlans: [], rawData: { vlanState: [], vlanName: [] } };
     }
     
     // Log the raw VLAN IDs returned from backend for debugging
@@ -86,12 +92,18 @@ export async function discoverVlans(
     if (validVlans.length > 4094) {
       console.error(`Found ${validVlans.length} VLANs which exceeds the maximum of 4094!`);
       // This shouldn't happen since the backend now enforces this, but just in case:
-      return validVlans.slice(0, 4094);
+      return {
+        vlans: validVlans.slice(0, 4094),
+        rawData: result.rawData
+      };
     }
     
-    return validVlans;
+    return {
+      vlans: validVlans,
+      rawData: result.rawData
+    };
   } catch (error) {
     console.error("Error discovering VLANs:", error);
-    return [];
+    return { vlans: [], rawData: { vlanState: [], vlanName: [] } };
   }
 }

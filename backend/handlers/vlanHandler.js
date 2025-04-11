@@ -1,3 +1,4 @@
+
 const snmp = require('net-snmp');
 const { isValidVlanId } = require('../utils/validation');
 
@@ -32,6 +33,12 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
   const invalidVlans = [];
   const processedVlanIds = new Set(); // Track already processed VLAN IDs to prevent duplicates
   
+  // Store raw SNMP responses for logging
+  const rawResponses = {
+    vlanState: [],
+    vlanName: []
+  };
+  
   try {
     // Log the exact OIDs we're querying - only once
     logger.info(`[SNMP] Using VLAN state OID: ${VLAN_OIDS.vlanList}`);
@@ -44,6 +51,14 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
       session.walk(VLAN_OIDS.vlanList, function(varbinds) {
         for (const varbind of varbinds) {
           if (!snmp.isVarbindError(varbind)) {
+            // Capture raw response for logging
+            const valueStr = varbind.value.toString();
+            const oidStr = varbind.oid.join ? varbind.oid.join('.') : varbind.oid.toString();
+            rawResponses.vlanState.push({
+              oid: oidStr,
+              value: valueStr
+            });
+            
             const oidParts = varbind.oid.split('.');
             const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
             
@@ -113,6 +128,14 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
         session.walk(VLAN_OIDS.vlanName, function(varbinds) {
           for (const varbind of varbinds) {
             if (!snmp.isVarbindError(varbind)) {
+              // Capture raw response for logging
+              const valueStr = varbind.value.toString();
+              const oidStr = varbind.oid.join ? varbind.oid.join('.') : varbind.oid.toString();
+              rawResponses.vlanName.push({
+                oid: oidStr,
+                value: valueStr
+              });
+              
               const oidParts = varbind.oid.split('.');
               const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
               
@@ -172,7 +195,12 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
       validCount: vlans.length,
       invalidCount: invalidVlans.length,
       activeCount,
-      inactiveCount
+      inactiveCount,
+      // Include raw response data
+      rawData: {
+        vlanState: rawResponses.vlanState,
+        vlanName: rawResponses.vlanName
+      }
     };
   } finally {
     // Close session
