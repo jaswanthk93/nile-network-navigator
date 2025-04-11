@@ -1,3 +1,4 @@
+
 const snmp = require('net-snmp');
 const { isValidVlanId } = require('../utils/validation');
 
@@ -54,7 +55,7 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
             
             // Extra validation for VLAN ID range - must be 1-4094
             if (vlanId < 1 || vlanId > 4094) {
-              logger.warn(`[SNMP] Ignoring invalid VLAN ID ${vlanId} from ${ip} (outside valid range 1-4094)`);
+              // Skip logging for invalid VLAN IDs
               invalidVlans.push({
                 vlanId,
                 reason: 'Invalid VLAN ID range'
@@ -84,8 +85,7 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
                 usedBy: [ip]
               });
             } else {
-              // Log VLANs that were skipped due to inactive status
-              logger.warn(`[SNMP] Skipping inactive VLAN ${vlanId} with state ${stateValue} from ${ip}`);
+              // Simply add to invalid list without logging
               invalidVlans.push({
                 vlanId,
                 reason: 'Inactive VLAN (status not 1)'
