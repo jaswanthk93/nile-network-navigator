@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { RefreshCwIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { RefreshCwIcon, ChevronDownIcon, ChevronUpIcon, EyeIcon, EyeOffIcon } from "lucide-react";
 import { fetchBackendLogs } from "@/utils/backendConnection";
 
 export function BackendLogViewer() {
@@ -16,6 +16,7 @@ export function BackendLogViewer() {
   const [error, setError] = useState<string | null>(null);
   const [expandedLogIds, setExpandedLogIds] = useState<Set<number>>(new Set());
   const [showRawData, setShowRawData] = useState(false);
+  const [showProcessedData, setShowProcessedData] = useState(true);
 
   const getLogs = useCallback(async () => {
     setIsLoading(true);
@@ -78,6 +79,16 @@ export function BackendLogViewer() {
     setShowRawData(!showRawData);
   };
 
+  const toggleProcessedDataView = () => {
+    setShowProcessedData(!showProcessedData);
+  };
+
+  // Helper function to determine if a log contains SNMP data
+  const hasSnmpData = (details: any) => {
+    return details && details.rawData && 
+      (details.rawData.vlanState || details.rawData.vlanName);
+  };
+
   const renderRawSnmpData = (details: any) => {
     if (!details || !details.rawData) return null;
     
@@ -89,11 +100,11 @@ export function BackendLogViewer() {
         
         {vlanState && vlanState.length > 0 && (
           <div className="space-y-1">
-            <h5 className="text-xs font-medium">VLAN State Responses:</h5>
+            <h5 className="text-xs font-medium">VLAN State Responses (SNMP Walk):</h5>
             <div className="max-h-40 overflow-y-auto bg-gray-50 p-2 rounded text-xs font-mono">
               {vlanState.map((item, i) => (
                 <div key={i} className="py-0.5">
-                  {item.oid} = {item.value}
+                  SNMPv2-SMI::enterprises.{item.oid.replace(/^1\.3\.6\.1\.4\.1\./g, '')} = INTEGER: {item.value}
                 </div>
               ))}
             </div>
@@ -102,11 +113,11 @@ export function BackendLogViewer() {
         
         {vlanName && vlanName.length > 0 && (
           <div className="space-y-1">
-            <h5 className="text-xs font-medium">VLAN Name Responses:</h5>
+            <h5 className="text-xs font-medium">VLAN Name Responses (SNMP Walk):</h5>
             <div className="max-h-40 overflow-y-auto bg-gray-50 p-2 rounded text-xs font-mono">
               {vlanName.map((item, i) => (
                 <div key={i} className="py-0.5">
-                  {item.oid} = {item.value}
+                  SNMPv2-SMI::enterprises.{item.oid.replace(/^1\.3\.6\.1\.4\.1\./g, '')} = STRING: {item.value}
                 </div>
               ))}
             </div>
@@ -127,7 +138,17 @@ export function BackendLogViewer() {
             onClick={toggleRawDataView}
             className="flex items-center gap-1"
           >
-            {showRawData ? "Hide Raw Data" : "Show Raw Data"}
+            {showRawData ? <EyeOffIcon className="h-3 w-3" /> : <EyeIcon className="h-3 w-3" />}
+            <span>{showRawData ? "Hide Raw Data" : "Show Raw Data"}</span>
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={toggleProcessedDataView}
+            className="flex items-center gap-1"
+          >
+            {showProcessedData ? <EyeOffIcon className="h-3 w-3" /> : <EyeIcon className="h-3 w-3" />}
+            <span>{showProcessedData ? "Hide Processed Data" : "Show Processed Data"}</span>
           </Button>
           <Button 
             variant="outline" 
@@ -193,17 +214,21 @@ export function BackendLogViewer() {
                   )}
                 </div>
               </div>
-              <div className="mt-1">{log.message}</div>
+              
+              {showProcessedData && <div className="mt-1">{log.message}</div>}
+              
               {log.details && expandedLogIds.has(index) && (
                 <div className="mt-2">
-                  <pre className="p-1 bg-gray-100 rounded text-xs overflow-x-auto">
-                    {typeof log.details === 'object' 
-                      ? JSON.stringify(log.details, null, 2) 
-                      : log.details}
-                  </pre>
+                  {showProcessedData && (
+                    <pre className="p-1 bg-gray-100 rounded text-xs overflow-x-auto">
+                      {typeof log.details === 'object' 
+                        ? JSON.stringify(log.details, null, 2) 
+                        : log.details}
+                    </pre>
+                  )}
                   
                   {/* Render raw SNMP data if available and raw data view is enabled */}
-                  {showRawData && renderRawSnmpData(log.details)}
+                  {showRawData && hasSnmpData(log.details) && renderRawSnmpData(log.details)}
                 </div>
               )}
             </div>
