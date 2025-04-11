@@ -89,6 +89,11 @@ export function BackendLogViewer() {
       (details.rawData.vlanState || details.rawData.vlanName);
   };
 
+  // Helper to check if a log message is about raw SNMP data
+  const isRawSnmpLog = (message: string) => {
+    return message.includes('[RAW SNMP');
+  };
+
   const renderRawSnmpData = (details: any) => {
     if (!details || !details.rawData) return null;
     
@@ -100,7 +105,7 @@ export function BackendLogViewer() {
         
         {vlanState && vlanState.length > 0 && (
           <div className="space-y-1">
-            <h5 className="text-xs font-medium">VLAN State Responses (SNMP Walk):</h5>
+            <h5 className="text-xs font-medium">VLAN State Responses (VLAN ID Discovery):</h5>
             <div className="max-h-40 overflow-y-auto bg-gray-50 p-2 rounded text-xs font-mono">
               {vlanState.map((item, i) => (
                 <div key={i} className="py-0.5">
@@ -113,7 +118,7 @@ export function BackendLogViewer() {
         
         {vlanName && vlanName.length > 0 && (
           <div className="space-y-1">
-            <h5 className="text-xs font-medium">VLAN Name Responses (SNMP Walk):</h5>
+            <h5 className="text-xs font-medium">VLAN Name Responses (VLAN Name Discovery):</h5>
             <div className="max-h-40 overflow-y-auto bg-gray-50 p-2 rounded text-xs font-mono">
               {vlanName.map((item, i) => (
                 <div key={i} className="py-0.5">
@@ -184,55 +189,66 @@ export function BackendLogViewer() {
         </div>
       ) : (
         <div className="space-y-2">
-          {logs.map((log, index) => (
-            <div 
-              key={index} 
-              className={`p-2 text-sm rounded border ${getLogStyle(log.level)}`}
-            >
-              <div className="flex justify-between items-start">
-                <span className="font-mono">{log.timestamp}</span>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                    log.level === 'error' ? 'bg-red-100 text-red-800' : 
-                    log.level === 'warn' ? 'bg-amber-100 text-amber-800' : 
-                    'bg-blue-100 text-blue-800'
-                  }`}>
-                    {log.level}
-                  </span>
-                  {log.details && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => toggleLogExpansion(index)}
-                      className="h-5 w-5 p-0"
-                    >
-                      {expandedLogIds.has(index) ? 
-                        <ChevronUpIcon className="h-4 w-4" /> : 
-                        <ChevronDownIcon className="h-4 w-4" />
-                      }
-                    </Button>
-                  )}
+          {logs.map((log, index) => {
+            // Check if this is a raw SNMP log that should only be shown when raw data is visible
+            const isRawLog = isRawSnmpLog(log.message);
+            if (isRawLog && !showRawData) return null;
+            
+            // Check if this is a processed log that should be hidden when processed data isn't visible
+            if (!isRawLog && !showProcessedData) return null;
+            
+            return (
+              <div 
+                key={index} 
+                className={`p-2 text-sm rounded border ${getLogStyle(log.level)} ${
+                  isRawLog ? 'bg-gray-50 font-mono text-xs' : ''
+                }`}
+              >
+                <div className="flex justify-between items-start">
+                  <span className="font-mono">{log.timestamp}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                      log.level === 'error' ? 'bg-red-100 text-red-800' : 
+                      log.level === 'warn' ? 'bg-amber-100 text-amber-800' : 
+                      'bg-blue-100 text-blue-800'
+                    }`}>
+                      {log.level}
+                    </span>
+                    {log.details && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => toggleLogExpansion(index)}
+                        className="h-5 w-5 p-0"
+                      >
+                        {expandedLogIds.has(index) ? 
+                          <ChevronUpIcon className="h-4 w-4" /> : 
+                          <ChevronDownIcon className="h-4 w-4" />
+                        }
+                      </Button>
+                    )}
+                  </div>
                 </div>
+                
+                <div className={`mt-1 ${isRawLog ? 'text-green-600' : ''}`}>{log.message}</div>
+                
+                {log.details && expandedLogIds.has(index) && (
+                  <div className="mt-2">
+                    {showProcessedData && !isRawLog && (
+                      <pre className="p-1 bg-gray-100 rounded text-xs overflow-x-auto">
+                        {typeof log.details === 'object' 
+                          ? JSON.stringify(log.details, null, 2) 
+                          : log.details}
+                      </pre>
+                    )}
+                    
+                    {/* Render raw SNMP data if available and raw data view is enabled */}
+                    {showRawData && hasSnmpData(log.details) && renderRawSnmpData(log.details)}
+                  </div>
+                )}
               </div>
-              
-              {showProcessedData && <div className="mt-1">{log.message}</div>}
-              
-              {log.details && expandedLogIds.has(index) && (
-                <div className="mt-2">
-                  {showProcessedData && (
-                    <pre className="p-1 bg-gray-100 rounded text-xs overflow-x-auto">
-                      {typeof log.details === 'object' 
-                        ? JSON.stringify(log.details, null, 2) 
-                        : log.details}
-                    </pre>
-                  )}
-                  
-                  {/* Render raw SNMP data if available and raw data view is enabled */}
-                  {showRawData && hasSnmpData(log.details) && renderRawSnmpData(log.details)}
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

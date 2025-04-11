@@ -28,7 +28,11 @@ exports.discoverDeviceInfo = async (ip, community = 'public', version = '2c') =>
   try {
     // Get system information with a targeted, focused query
     const deviceInfo = {};
-    logger.info(`[SNMP] FOCUSED QUERY: Executing targeted device info query with specific OIDs only`);
+    logger.info(`[SNMP] STRICT GET: Executing device info query with ONLY the following specific OIDs:`);
+    logger.info(`[SNMP] STRICT GET: 1. sysDescr: 1.3.6.1.2.1.1.1.0`);
+    logger.info(`[SNMP] STRICT GET: 2. sysObjectID: 1.3.6.1.2.1.1.2.0`);
+    logger.info(`[SNMP] STRICT GET: 3. sysName: 1.3.6.1.2.1.1.5.0`);
+    logger.info(`[SNMP] STRICT GET: 4. sysLocation: 1.3.6.1.2.1.1.6.0`);
     logger.info(`[SNMP] Command equivalent: snmpget -v${version} -c ${community} ${ip} ${oids.join(' ')}`);
     
     await new Promise((resolve, reject) => {
@@ -55,7 +59,7 @@ exports.discoverDeviceInfo = async (ip, community = 'public', version = '2c') =>
           // Log the raw SNMP response
           const oidName = getOidName(oids[i]);
           const valueType = Buffer.isBuffer(value) ? "STRING" : "INTEGER";
-          logger.info(`[RAW SNMP] ${oids[i]} (${oidName}) = ${valueType}: ${parsedValue}`);
+          logger.info(`[RAW SNMP DEVICE INFO] ${oids[i]} (${oidName}) = ${valueType}: ${parsedValue}`);
           
           // Store in deviceInfo
           switch (varbinds[i].oid) {
