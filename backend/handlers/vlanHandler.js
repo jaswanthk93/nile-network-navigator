@@ -1,4 +1,3 @@
-
 const snmp = require('net-snmp');
 const { isValidVlanId } = require('../utils/validation');
 
@@ -55,7 +54,6 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
             
             // Extra validation for VLAN ID range - must be 1-4094
             if (vlanId < 1 || vlanId > 4094) {
-              // Skip logging for invalid VLAN IDs
               invalidVlans.push({
                 vlanId,
                 reason: 'Invalid VLAN ID range'
@@ -85,7 +83,6 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
                 usedBy: [ip]
               });
             } else {
-              // Simply add to invalid list without logging
               invalidVlans.push({
                 vlanId,
                 reason: 'Inactive VLAN (status not 1)'
@@ -98,6 +95,8 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
           logger.error(`[SNMP] Error walking VLAN state OID on ${ip}:`, error);
           reject(error);
         } else {
+          // Log the actual VLANs found for debugging
+          logger.info(`[SNMP] First walk complete. Found these active VLAN IDs: ${vlans.map(v => v.vlanId).join(', ')}`);
           resolve();
         }
       });
@@ -164,6 +163,7 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     const inactiveCount = invalidVlans.filter(v => v.reason === 'Inactive VLAN (status not 1)').length;
     
     logger.info(`[SNMP] Found ${activeCount} active VLANs on ${ip} (ignored ${inactiveCount} inactive and ${invalidVlans.length - inactiveCount} invalid VLANs)`);
+    logger.info(`[SNMP] Final active VLAN IDs: ${vlans.map(v => v.vlanId).join(', ')}`);
     
     return { 
       vlans,

@@ -31,6 +31,9 @@ export async function discoverVlans(
       return [];
     }
     
+    // Log the raw VLAN IDs returned from backend for debugging
+    console.log(`Raw VLAN IDs from backend: ${result.vlans.map((v: any) => v.vlanId).join(', ')}`);
+    
     // Process VLAN data and handle duplicates
     const processedVlans = new Map<number, DiscoveredVlan>();
     
@@ -67,8 +70,11 @@ export async function discoverVlans(
       });
     }
     
-    // Convert the Map to an array
-    const validVlans = Array.from(processedVlans.values());
+    // Convert the Map to an array and sort by VLAN ID
+    const validVlans = Array.from(processedVlans.values()).sort((a, b) => a.vlanId - b.vlanId);
+    
+    // Log the final list of VLANs for clarity
+    console.log(`Processed ${validVlans.length} valid VLANs, IDs: ${validVlans.map(v => v.vlanId).join(', ')}`);
     
     // Log active vs inactive counts if available in the response
     if (result.activeCount !== undefined && result.inactiveCount !== undefined) {
