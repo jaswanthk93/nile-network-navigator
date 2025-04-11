@@ -39,161 +39,128 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     vlanName: []
   };
   
-  // Add counters to track batch processing
-  let vlanIdBatchCount = 0;
-  let vlanIdTotalCount = 0;
-  let vlanNameBatchCount = 0;
-  let vlanNameTotalCount = 0;
-  
   try {
     // Log the exact OIDs we're querying - be very explicit
     logger.info(`[SNMP] STRICT TARGET: Using ONLY the following OIDs:`);
     logger.info(`[SNMP] STRICT TARGET: 1. VLAN state OID: ${VLAN_OIDS.vlanList} (for VLAN IDs)`);
     logger.info(`[SNMP] STRICT TARGET: 2. VLAN name OID: ${VLAN_OIDS.vlanName} (for VLAN names)`);
     
-    // STEP 1: ONLY walk the specific VLAN ID OID (vlanList) - absolutely nothing else
-    logger.info(`[SNMP] STRICT WALK STEP 1: Querying ONLY VLAN IDs with single OID ${VLAN_OIDS.vlanList}`);
-    logger.info(`[SNMP] Command equivalent: snmpwalk -v${version} -c ${community} ${ip} ${VLAN_OIDS.vlanList}`);
+    // STEP 1: Execute a targeted subtree method call for VLAN IDs 
+    logger.info(`[SNMP] Executing targeted subtree call for VLAN IDs with base OID ${VLAN_OIDS.vlanList}`);
     
-    await new Promise((resolve, reject) => {
-      // Explicitly restrict walk to ONLY the specific VLAN OID
-      session.walk(VLAN_OIDS.vlanList, function(varbinds) {
-        // Log batch reception
-        vlanIdBatchCount++;
-        logger.info(`[SNMP] VLAN ID Walk - Received batch #${vlanIdBatchCount} with ${varbinds.length} entries`);
+    const vlanIdResults = await performTargetedOperation(session, VLAN_OIDS.vlanList);
+    logger.info(`[SNMP] VLAN ID discovery complete - received ${vlanIdResults.length} OID responses`);
+    
+    // Process VLAN ID results
+    for (const result of vlanIdResults) {
+      if (result && result.oid && result.value !== undefined) {
+        // Log in the raw SNMP format
+        const oidStr = Array.isArray(result.oid) ? result.oid.join('.') : result.oid.toString();
+        const valueStr = result.value.toString();
         
-        for (const varbind of varbinds) {
-          vlanIdTotalCount++;
-          if (!snmp.isVarbindError(varbind)) {
-            // Capture raw response for logging
-            const valueStr = varbind.value.toString();
-            const oidStr = varbind.oid.join ? varbind.oid.join('.') : varbind.oid.toString();
-            rawResponses.vlanState.push({
-              oid: oidStr,
-              value: valueStr
-            });
-            
-            // Log in the raw SNMP format
-            logger.info(`[RAW SNMP VLAN ID] SNMPv2-SMI::enterprises.${oidStr.replace(/^1\.3\.6\.1\.4\.1\./g, '')} = INTEGER: ${valueStr}`);
-            
-            // Parse the VLAN ID from the OID
-            const oidParts = oidStr.split('.');
-            const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
-            
-            // Skip if we've already processed this VLAN ID or it's not a number
-            if (processedVlanIds.has(vlanId) || isNaN(vlanId)) {
-              continue;
-            }
-            
-            // Extra validation for VLAN ID range - must be 1-4094
-            if (vlanId < 1 || vlanId > 4094) {
-              invalidVlans.push({
-                vlanId,
-                reason: 'Invalid VLAN ID range'
-              });
-              processedVlanIds.add(vlanId); // Mark as processed anyway to avoid duplicates
-              continue;
-            }
-            
-            // Parse the state value (1 = operational, 2 = suspended, etc.)
-            let stateValue = 0;
-            if (Buffer.isBuffer(varbind.value)) {
-              stateValue = parseInt(varbind.value.toString(), 10);
-            } else if (typeof varbind.value === 'number') {
-              stateValue = varbind.value;
-            }
-            
-            // Mark this VLAN ID as processed
-            processedVlanIds.add(vlanId);
-            
-            // Only include VLANs with state value of 1 (active)
-            if (stateValue === 1) {
-              logger.info(`[SNMP] Found active VLAN ${vlanId} with state ${stateValue} on ${ip}`);
-              vlans.push({
-                vlanId,
-                name: `VLAN${vlanId}`, // Default name, will be updated
-                state: 'active',
-                usedBy: [ip]
-              });
-            } else {
-              invalidVlans.push({
-                vlanId,
-                reason: 'Inactive VLAN (status not 1)'
-              });
-            }
-          }
+        // Add to raw responses for logging
+        rawResponses.vlanState.push({
+          oid: oidStr,
+          value: valueStr
+        });
+        
+        logger.info(`[RAW SNMP VLAN ID] SNMPv2-SMI::enterprises.${oidStr.replace(/^1\.3\.6\.1\.4\.1\./g, '')} = INTEGER: ${valueStr}`);
+        
+        // Parse the VLAN ID from the OID
+        const oidParts = oidStr.split('.');
+        const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
+        
+        // Skip if we've already processed this VLAN ID or it's not a number
+        if (processedVlanIds.has(vlanId) || isNaN(vlanId)) {
+          continue;
         }
-      }, function(error) {
-        if (error) {
-          logger.error(`[SNMP] Error walking VLAN state OID on ${ip}:`, error);
-          reject(error);
+        
+        // Extra validation for VLAN ID range - must be 1-4094
+        if (vlanId < 1 || vlanId > 4094) {
+          invalidVlans.push({
+            vlanId,
+            reason: 'Invalid VLAN ID range'
+          });
+          processedVlanIds.add(vlanId); // Mark as processed anyway to avoid duplicates
+          continue;
+        }
+        
+        // Parse the state value (1 = operational, 2 = suspended, etc.)
+        let stateValue = 0;
+        if (Buffer.isBuffer(result.value)) {
+          stateValue = parseInt(result.value.toString(), 10);
+        } else if (typeof result.value === 'number') {
+          stateValue = result.value;
+        }
+        
+        // Mark this VLAN ID as processed
+        processedVlanIds.add(vlanId);
+        
+        // Only include VLANs with state value of 1 (active)
+        if (stateValue === 1) {
+          logger.info(`[SNMP] Found active VLAN ${vlanId} with state ${stateValue} on ${ip}`);
+          vlans.push({
+            vlanId,
+            name: `VLAN${vlanId}`, // Default name, will be updated
+            state: 'active',
+            usedBy: [ip]
+          });
         } else {
-          // Log the actual VLANs found for debugging
-          logger.info(`[SNMP] First walk complete. Received ${vlanIdBatchCount} batches with total of ${vlanIdTotalCount} VLAN ID entries.`);
-          logger.info(`[SNMP] Found these active VLAN IDs: ${vlans.map(v => v.vlanId).join(', ')}`);
-          resolve();
+          invalidVlans.push({
+            vlanId,
+            reason: 'Inactive VLAN (status not 1)'
+          });
         }
-      });
-    });
+      }
+    }
+    
+    // Log the actual VLANs found for debugging
+    logger.info(`[SNMP] VLAN ID discovery found ${vlans.length} active VLANs: ${vlans.map(v => v.vlanId).join(', ')}`);
     
     // Reset the processed set for name lookups
     processedVlanIds.clear();
     
-    // STEP 2: ONLY get names for the VLANs we already found (if any) - absolutely nothing else
+    // STEP 2: Get names for the VLANs we already found (if any)
     if (vlans.length > 0) {
-      logger.info(`[SNMP] STRICT WALK STEP 2: Querying ONLY VLAN names with single OID ${VLAN_OIDS.vlanName}`);
-      logger.info(`[SNMP] Command equivalent: snmpwalk -v${version} -c ${community} ${ip} ${VLAN_OIDS.vlanName}`);
+      logger.info(`[SNMP] Executing targeted subtree call for VLAN names with base OID ${VLAN_OIDS.vlanName}`);
       
-      await new Promise((resolve, reject) => {
-        // Explicitly restrict walk to ONLY the specific VLAN name OID
-        session.walk(VLAN_OIDS.vlanName, function(varbinds) {
-          // Log batch reception
-          vlanNameBatchCount++;
-          logger.info(`[SNMP] VLAN Name Walk - Received batch #${vlanNameBatchCount} with ${varbinds.length} entries`);
+      const vlanNameResults = await performTargetedOperation(session, VLAN_OIDS.vlanName);
+      logger.info(`[SNMP] VLAN name discovery complete - received ${vlanNameResults.length} OID responses`);
+      
+      // Process VLAN name results
+      for (const result of vlanNameResults) {
+        if (result && result.oid && result.value !== undefined) {
+          // Log in the raw SNMP format
+          const oidStr = Array.isArray(result.oid) ? result.oid.join('.') : result.oid.toString();
+          const valueStr = result.value.toString();
           
-          for (const varbind of varbinds) {
-            vlanNameTotalCount++;
-            if (!snmp.isVarbindError(varbind)) {
-              // Capture raw response for logging
-              const valueStr = varbind.value.toString();
-              const oidStr = varbind.oid.join ? varbind.oid.join('.') : varbind.oid.toString();
-              rawResponses.vlanName.push({
-                oid: oidStr,
-                value: valueStr
-              });
-              
-              // Log in the raw SNMP format
-              logger.info(`[RAW SNMP VLAN NAME] SNMPv2-SMI::enterprises.${oidStr.replace(/^1\.3\.6\.1\.4\.1\./g, '')} = STRING: ${valueStr}`);
-              
-              // Parse the VLAN ID from the OID
-              const oidParts = oidStr.split('.');
-              const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
-              
-              // Skip if we've already processed this VLAN ID for names or it's invalid
-              if (processedVlanIds.has(vlanId) || isNaN(vlanId) || vlanId < 1 || vlanId > 4094) {
-                continue;
-              }
-              
-              processedVlanIds.add(vlanId);
-              
-              // Only update names for VLANs we've already identified
-              const vlan = vlans.find(v => v.vlanId === vlanId);
-              if (vlan && Buffer.isBuffer(varbind.value)) {
-                vlan.name = varbind.value.toString().trim() || `VLAN${vlanId}`;
-                logger.info(`[SNMP] VLAN ${vlanId} name: ${vlan.name}`);
-              }
-            }
+          // Add to raw responses for logging
+          rawResponses.vlanName.push({
+            oid: oidStr,
+            value: valueStr
+          });
+          
+          logger.info(`[RAW SNMP VLAN NAME] SNMPv2-SMI::enterprises.${oidStr.replace(/^1\.3\.6\.1\.4\.1\./g, '')} = STRING: ${valueStr}`);
+          
+          // Parse the VLAN ID from the OID
+          const oidParts = oidStr.split('.');
+          const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
+          
+          // Skip if we've already processed this VLAN ID for names or it's invalid
+          if (processedVlanIds.has(vlanId) || isNaN(vlanId) || vlanId < 1 || vlanId > 4094) {
+            continue;
           }
-        }, function(error) {
-          if (error) {
-            logger.error(`[SNMP] Error walking VLAN name OID on ${ip}:`, error);
-            reject(error);
-          } else {
-            logger.info(`[SNMP] Second walk complete. Received ${vlanNameBatchCount} batches with total of ${vlanNameTotalCount} VLAN name entries.`);
-            resolve();
+          
+          processedVlanIds.add(vlanId);
+          
+          // Only update names for VLANs we've already identified
+          const vlan = vlans.find(v => v.vlanId === vlanId);
+          if (vlan && Buffer.isBuffer(result.value)) {
+            vlan.name = result.value.toString().trim() || `VLAN${vlanId}`;
+            logger.info(`[SNMP] VLAN ${vlanId} name: ${vlan.name}`);
           }
-        });
-      });
+        }
+      }
     }
     
     // Handle the case of too many VLANs - limit to valid range if needed
@@ -218,7 +185,7 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     
     logger.info(`[SNMP] Found ${activeCount} active VLANs on ${ip} (ignored ${inactiveCount} inactive and ${invalidVlans.length - inactiveCount} invalid VLANs)`);
     logger.info(`[SNMP] Final active VLAN IDs: ${vlans.map(v => v.vlanId).join(', ')}`);
-    logger.info(`[SNMP] VLAN processing summary: ID walk had ${vlanIdBatchCount} batches (${vlanIdTotalCount} total entries), Name walk had ${vlanNameBatchCount} batches (${vlanNameTotalCount} total entries)`);
+    logger.info(`[SNMP] VLAN processing summary: Found ${vlans.length} active VLANs out of ${vlans.length + invalidVlans.length} total VLANs`);
     
     return { 
       vlans,
@@ -239,3 +206,43 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     session.close();
   }
 };
+
+/**
+ * Performs a targeted SNMP operation on a specific OID
+ * Using subtree as a more efficient alternative to generic walk
+ * 
+ * @param {Object} session - SNMP session
+ * @param {string} baseOid - The base OID to query
+ * @returns {Promise<Array>} - Array of results with oid and value
+ */
+async function performTargetedOperation(session, baseOid) {
+  return new Promise((resolve, reject) => {
+    const results = [];
+    
+    // Use subtree method which is more targeted than general walk
+    session.subtree(baseOid, (varbinds) => {
+      if (varbinds === null) {
+        // End of MIB view or other error, but just consider it the end
+        resolve(results);
+        return;
+      }
+      
+      // Process this batch of results
+      for (const varbind of varbinds) {
+        if (!snmp.isVarbindError(varbind)) {
+          results.push({
+            oid: varbind.oid,
+            value: varbind.value
+          });
+        }
+      }
+    }, (error) => {
+      if (error) {
+        logger.error(`[SNMP] Error in subtree operation for ${baseOid}:`, error);
+        reject(error);
+      } else {
+        resolve(results);
+      }
+    });
+  });
+}
