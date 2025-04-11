@@ -6,7 +6,7 @@ import { isValidVlanId } from "../networkValidation";
  * Parse VLAN output based on device make
  */
 export function parseVlanOutput(output: string, make: string): DiscoveredVlan[] {
-  const vlans: DiscoveredVlan[] = [];
+  const processedVlans = new Map<number, DiscoveredVlan>();
   
   // Normalize make to handle case sensitivity
   const vendorName = make ? make.toLowerCase() : "default";
@@ -35,10 +35,10 @@ export function parseVlanOutput(output: string, make: string): DiscoveredVlan[] 
             const vlanIdNumber = parseInt(vlanId, 10);
             
             // Only include valid VLAN IDs (1-4094)
-            if (isValidVlanId(vlanIdNumber)) {
+            if (isValidVlanId(vlanIdNumber) && !processedVlans.has(vlanIdNumber)) {
               const portList = ports.split(',').map(p => p.trim()).filter(Boolean);
               
-              vlans.push({
+              processedVlans.set(vlanIdNumber, {
                 vlanId: vlanIdNumber,
                 name,
                 usedBy: portList
@@ -61,8 +61,8 @@ export function parseVlanOutput(output: string, make: string): DiscoveredVlan[] 
             const vlanName = nameMatch[1];
             const vlanId = parseInt(idMatch[1], 10);
             
-            // Only include valid VLAN IDs
-            if (isValidVlanId(vlanId)) {
+            // Only include valid VLAN IDs and skip duplicates
+            if (isValidVlanId(vlanId) && !processedVlans.has(vlanId)) {
               // Extract interfaces
               const interfaces: string[] = [];
               const interfaceMatches = block.matchAll(/(\S+\.\d+)(?:,|\s|$)/g);
@@ -70,7 +70,7 @@ export function parseVlanOutput(output: string, make: string): DiscoveredVlan[] 
                 interfaces.push(match[1]);
               }
               
-              vlans.push({
+              processedVlans.set(vlanId, {
                 vlanId,
                 name: vlanName,
                 usedBy: interfaces
@@ -90,9 +90,9 @@ export function parseVlanOutput(output: string, make: string): DiscoveredVlan[] 
           const [_, vlanId, name] = match;
           const vlanIdNumber = parseInt(vlanId, 10);
           
-          // Only include valid VLAN IDs
-          if (isValidVlanId(vlanIdNumber)) {
-            vlans.push({
+          // Only include valid VLAN IDs and skip duplicates
+          if (isValidVlanId(vlanIdNumber) && !processedVlans.has(vlanIdNumber)) {
+            processedVlans.set(vlanIdNumber, {
               vlanId: vlanIdNumber,
               name,
               usedBy: [] // HP/Aruba often requires a separate command for port mapping
@@ -111,9 +111,9 @@ export function parseVlanOutput(output: string, make: string): DiscoveredVlan[] 
           const [_, vlanId, name] = match;
           const vlanIdNumber = parseInt(vlanId, 10);
           
-          // Only include valid VLAN IDs
-          if (isValidVlanId(vlanIdNumber)) {
-            vlans.push({
+          // Only include valid VLAN IDs and skip duplicates
+          if (isValidVlanId(vlanIdNumber) && !processedVlans.has(vlanIdNumber)) {
+            processedVlans.set(vlanIdNumber, {
               vlanId: vlanIdNumber,
               name,
               usedBy: []
@@ -126,6 +126,6 @@ export function parseVlanOutput(output: string, make: string): DiscoveredVlan[] 
     console.error(`Error parsing VLAN output for ${make}:`, error);
   }
   
-  // Sort by VLAN ID for consistency
-  return vlans.sort((a, b) => a.vlanId - b.vlanId);
+  // Convert the Map to an array and sort by VLAN ID for consistency
+  return Array.from(processedVlans.values()).sort((a, b) => a.vlanId - b.vlanId);
 }
