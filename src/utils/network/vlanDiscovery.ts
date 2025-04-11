@@ -31,7 +31,7 @@ export async function discoverVlans(
       return [];
     }
     
-    // Filter out any invalid VLANs for safety
+    // Filter out any invalid VLANs for safety (should already be done on backend now)
     const validVlans = result.vlans.filter((vlan: any) => 
       isValidVlanId(vlan.vlanId)
     );
@@ -40,10 +40,17 @@ export async function discoverVlans(
       console.warn(`Filtered out ${result.vlans.length - validVlans.length} invalid VLANs`);
     }
     
-    console.log(`Discovered ${validVlans.length} VLANs from ${ip}`);
+    // Log active vs inactive counts if available in the response
+    if (result.activeCount !== undefined && result.inactiveCount !== undefined) {
+      console.log(`Discovered ${validVlans.length} active VLANs from ${ip} (ignored ${result.inactiveCount} inactive VLANs)`);
+    } else {
+      console.log(`Discovered ${validVlans.length} VLANs from ${ip}`);
+    }
+    
     return validVlans;
   } catch (error) {
     console.error("Error discovering VLANs:", error);
     return [];
   }
 }
+

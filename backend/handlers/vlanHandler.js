@@ -55,15 +55,23 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
               stateValue = varbind.value;
             }
             
+            // IMPORTANT CHANGE: Only include VLANs with status 1 (active)
             if (!isNaN(vlanId)) {
-              // Only include valid VLAN IDs between 1 and 4094
-              if (isValidVlanId(vlanId)) {
-                logger.info(`[SNMP] Found VLAN ${vlanId} with state ${stateValue} on ${ip}`);
+              // Only include valid VLAN IDs between 1 and 4094 AND with state value of 1 (active)
+              if (isValidVlanId(vlanId) && stateValue === 1) {
+                logger.info(`[SNMP] Found active VLAN ${vlanId} with state ${stateValue} on ${ip}`);
                 vlans.push({
                   vlanId,
                   name: `VLAN${vlanId}`, // Default name, will be updated
-                  state: stateValue === 1 ? 'active' : 'suspended',
+                  state: 'active',
                   usedBy: [ip]
+                });
+              } else if (isValidVlanId(vlanId) && stateValue !== 1) {
+                // Log VLANs that were skipped due to inactive status
+                logger.warn(`[SNMP] Skipping inactive VLAN ${vlanId} with state ${stateValue} from ${ip}`);
+                invalidVlans.push({
+                  vlanId,
+                  reason: 'Inactive VLAN (status not 1)'
                 });
               } else {
                 logger.warn(`[SNMP] Ignoring invalid VLAN ID ${vlanId} from ${ip} (outside valid range)`);
@@ -120,17 +128,24 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     // Sort VLANs by ID for consistent output
     vlans.sort((a, b) => a.vlanId - b.vlanId);
     
-    logger.info(`[SNMP] Found ${vlans.length} valid VLANs on ${ip} (ignored ${invalidVlans.length} invalid VLANs)`);
+    // Add counts for active VLANs specifically
+    const activeCount = vlans.length;
+    const inactiveCount = invalidVlans.filter(v => v.reason === 'Inactive VLAN (status not 1)').length;
+    
+    logger.info(`[SNMP] Found ${activeCount} active VLANs on ${ip} (ignored ${inactiveCount} inactive and ${invalidVlans.length - inactiveCount} invalid VLANs)`);
     
     return { 
       vlans,
       invalidVlans,
       totalDiscovered: vlans.length + invalidVlans.length,
       validCount: vlans.length,
-      invalidCount: invalidVlans.length
+      invalidCount: invalidVlans.length,
+      activeCount,
+      inactiveCount
     };
   } finally {
     // Close session
     session.close();
   }
 };
+
