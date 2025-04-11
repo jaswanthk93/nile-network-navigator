@@ -44,10 +44,11 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     logger.info(`[SNMP] Using VLAN state OID: ${VLAN_OIDS.vlanList}`);
     logger.info(`[SNMP] Using VLAN name OID: ${VLAN_OIDS.vlanName}`);
     
-    // Step 1: Walk through VLAN state OID to get VLAN IDs - focused only on vlanList OID
+    // STEP 1: ONLY walk the specific VLAN ID OID (vlanList)
+    logger.info(`[SNMP] STEP 1: Querying ONLY VLAN IDs with OID ${VLAN_OIDS.vlanList}`);
+    
     await new Promise((resolve, reject) => {
-      logger.info(`[SNMP] Executing targeted walk: snmpwalk -v${version} -c ${community} ${ip} ${VLAN_OIDS.vlanList}`);
-      
+      // Do not walk the entire MIB tree - only walk the specific VLAN OID
       session.walk(VLAN_OIDS.vlanList, function(varbinds) {
         for (const varbind of varbinds) {
           if (!snmp.isVarbindError(varbind)) {
@@ -124,11 +125,12 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
     // Reset the processed set for name lookups
     processedVlanIds.clear();
     
-    // Step 2: If we discovered VLANs, fetch their names - focused only on vlanName OID
+    // STEP 2: ONLY get names for the VLANs we already found (if any)
     if (vlans.length > 0) {
+      logger.info(`[SNMP] STEP 2: Querying ONLY VLAN names with OID ${VLAN_OIDS.vlanName}`);
+      
       await new Promise((resolve, reject) => {
-        logger.info(`[SNMP] Executing targeted walk: snmpwalk -v${version} -c ${community} ${ip} ${VLAN_OIDS.vlanName}`);
-        
+        // Only walk the specific VLAN name OID
         session.walk(VLAN_OIDS.vlanName, function(varbinds) {
           for (const varbind of varbinds) {
             if (!snmp.isVarbindError(varbind)) {

@@ -28,7 +28,8 @@ exports.discoverDeviceInfo = async (ip, community = 'public', version = '2c') =>
   try {
     // Get system information with a targeted, focused query
     const deviceInfo = {};
-    logger.info(`[SNMP] Executing targeted device discovery: snmpget -v${version} -c ${community} ${ip} ${oids.join(' ')}`);
+    logger.info(`[SNMP] FOCUSED QUERY: Executing targeted device info query with specific OIDs only`);
+    logger.info(`[SNMP] Command equivalent: snmpget -v${version} -c ${community} ${ip} ${oids.join(' ')}`);
     
     await new Promise((resolve, reject) => {
       session.get(oids, (error, varbinds) => {

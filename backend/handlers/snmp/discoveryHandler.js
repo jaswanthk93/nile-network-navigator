@@ -13,7 +13,7 @@ exports.discoverDevice = async (req, res) => {
       return res.status(400).json({ error: 'IP address is required' });
     }
     
-    logger.info(`[SNMP] Starting targeted device discovery for ${ip} using SNMPv${version}`);
+    logger.info(`[SNMP] Starting focused device discovery for ${ip} using SNMPv${version}`);
     const deviceInfo = await deviceDiscovery.discoverDeviceInfo(ip, community, version);
     logger.info(`[SNMP] Device discovery completed for ${ip} - Identified as: ${deviceInfo.manufacturer || 'Unknown'} ${deviceInfo.model || ''} (${deviceInfo.type || 'Unknown Type'})`);
     
@@ -38,7 +38,7 @@ exports.discoverVlans = async (req, res) => {
       return res.status(400).json({ error: 'IP address is required' });
     }
     
-    logger.info(`[SNMP] Starting targeted VLAN discovery for ${ip} using SNMPv${version}`);
+    logger.info(`[SNMP] Starting focused VLAN discovery for ${ip} using SNMPv${version} - Will query ONLY VLAN-specific OIDs`);
     
     const result = await vlanHandler.discoverVlans(ip, community, version, make);
     
