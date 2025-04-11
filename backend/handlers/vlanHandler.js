@@ -59,6 +59,9 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
               value: valueStr
             });
             
+            // Log in the raw SNMP format
+            logger.info(`[RAW SNMP] SNMPv2-SMI::enterprises.${oidStr.replace(/^1\.3\.6\.1\.4\.1\./g, '')} = INTEGER: ${valueStr}`);
+            
             const oidParts = varbind.oid.split('.');
             const vlanId = parseInt(oidParts[oidParts.length - 1], 10);
             
@@ -135,6 +138,9 @@ exports.discoverVlans = async (ip, community = 'public', version = '2c', make) =
                 oid: oidStr,
                 value: valueStr
               });
+              
+              // Log in the raw SNMP format
+              logger.info(`[RAW SNMP] SNMPv2-SMI::enterprises.${oidStr.replace(/^1\.3\.6\.1\.4\.1\./g, '')} = STRING: ${valueStr}`);
               
               const oidParts = varbind.oid.split('.');
               const vlanId = parseInt(oidParts[oidParts.length - 1], 10);

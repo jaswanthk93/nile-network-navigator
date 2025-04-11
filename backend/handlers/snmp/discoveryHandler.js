@@ -13,14 +13,16 @@ exports.discoverDevice = async (req, res) => {
       return res.status(400).json({ error: 'IP address is required' });
     }
     
+    logger.info(`[SNMP] Starting device discovery for ${ip} using SNMPv${version}`);
     const deviceInfo = await deviceDiscovery.discoverDeviceInfo(ip, community, version);
+    logger.info(`[SNMP] Device discovery completed for ${ip} - Identified as: ${deviceInfo.manufacturer || 'Unknown'} ${deviceInfo.model || ''} (${deviceInfo.type || 'Unknown Type'})`);
     
     res.json({ 
       status: 'success',
       device: deviceInfo
     });
   } catch (error) {
-    console.error('SNMP device discovery error:', error);
+    logger.error('[SNMP] Device discovery error:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -36,15 +38,20 @@ exports.discoverVlans = async (req, res) => {
       return res.status(400).json({ error: 'IP address is required' });
     }
     
-    logger.info(`VLAN discovery request received for ${ip} using SNMPv${version}`);
+    logger.info(`[SNMP] VLAN discovery request received for ${ip} using SNMPv${version}`);
     
     const result = await vlanHandler.discoverVlans(ip, community, version, make);
     
-    logger.info(`VLAN discovery completed for ${ip}: found ${result.vlans.length} valid VLANs`);
+    logger.info(`[SNMP] VLAN discovery completed for ${ip}: found ${result.vlans.length} valid VLANs`);
+    
+    // Log some sample raw data for verification
+    if (result.rawData && result.rawData.vlanState && result.rawData.vlanState.length > 0) {
+      logger.info(`[SNMP] Sample raw VLAN state data (first entry): ${JSON.stringify(result.rawData.vlanState[0])}`);
+    }
     
     res.json(result);
   } catch (error) {
-    logger.error('SNMP VLAN discovery error:', error);
+    logger.error('[SNMP] VLAN discovery error:', error);
     res.status(500).json({ error: error.message });
   }
 };

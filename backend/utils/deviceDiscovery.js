@@ -50,6 +50,11 @@ exports.discoverDeviceInfo = async (ip, community = 'public', version = '2c') =>
             parsedValue = value;
           }
           
+          // Log the raw SNMP response
+          const oidName = getOidName(oids[i]);
+          const valueType = Buffer.isBuffer(value) ? "STRING" : "INTEGER";
+          console.log(`[RAW SNMP] ${oids[i]} (${oidName}) = ${valueType}: ${parsedValue}`);
+          
           // Store in deviceInfo
           switch (varbinds[i].oid) {
             case "1.3.6.1.2.1.1.1.0":
@@ -81,6 +86,24 @@ exports.discoverDeviceInfo = async (ip, community = 'public', version = '2c') =>
     session.close();
   }
 };
+
+/**
+ * Get a human-readable name for standard OIDs
+ * @private
+ */
+function getOidName(oid) {
+  const oidMap = {
+    "1.3.6.1.2.1.1.1.0": "sysDescr",
+    "1.3.6.1.2.1.1.2.0": "sysObjectID",
+    "1.3.6.1.2.1.1.3.0": "sysUpTime",
+    "1.3.6.1.2.1.1.4.0": "sysContact",
+    "1.3.6.1.2.1.1.5.0": "sysName",
+    "1.3.6.1.2.1.1.6.0": "sysLocation",
+    "1.3.6.1.2.1.1.7.0": "sysServices"
+  };
+  
+  return oidMap[oid] || "unknown";
+}
 
 /**
  * Get manufacturer from sysObjectID
