@@ -8,15 +8,17 @@
 export { isValidVlanId } from './networkValidation';
 export { 
   connectToSwitch,
-  executeCommands
+  executeCommands,
+  type SwitchConnectionDetails
 } from './deviceConnection';
-export type { SwitchConnectionDetails } from './deviceConnection';
 export {
   executeSnmpQueries,
   executeSnmpWalk,
   disconnectSession
 } from './apiClient';
 export {
-  getVlansFromSwitch,
+  getVlansFromSwitch
+} from './network/deviceVlans';
+export {
   discoverVlans
 } from './network/vlanDiscovery';
