@@ -15,20 +15,20 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
       console.log(`Discovering VLANs from ${connectionDetails.ip} via SNMP`);
       
       // Always use Cisco OIDs for the provided switch based on the user's output
-      const updatedConnectionDetails = {
-        ...connectionDetails,
-        make: connectionDetails.make || "Cisco" // Default to Cisco if not specified
-      };
-      
       const result = await callBackendApi("/snmp/discover-vlans", {
-        ip: updatedConnectionDetails.ip,
-        community: updatedConnectionDetails.community || "public",
-        version: updatedConnectionDetails.version || "2c",
-        make: updatedConnectionDetails.make
+        ip: connectionDetails.ip,
+        community: connectionDetails.community || "public",
+        version: connectionDetails.version || "2c",
+        make: connectionDetails.make || "Cisco" // Default to Cisco if not specified
       });
       
       // Log raw results for debugging
-      console.log(`Raw VLANs from ${connectionDetails.ip}:`, result.vlans);
+      console.log(`Raw VLANs from ${connectionDetails.ip}:`, result);
+      
+      if (!result.vlans || !Array.isArray(result.vlans)) {
+        console.error("Invalid response format from VLAN discovery");
+        return [];
+      }
       
       // Filter out invalid VLANs
       const validVlans = result.vlans.filter((vlan: any) => 
@@ -37,12 +37,9 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
       
       if (result.vlans.length !== validVlans.length) {
         console.warn(`Filtered out ${result.vlans.length - validVlans.length} invalid VLANs from ${connectionDetails.ip}`);
-        console.warn(`Invalid VLAN IDs: ${result.vlans
-          .filter((vlan: any) => !isValidVlanId(vlan.vlanId))
-          .map((vlan: any) => vlan.vlanId)
-          .join(', ')}`);
       }
       
+      console.log(`Final valid VLANs from ${connectionDetails.ip}:`, validVlans);
       return validVlans;
     } else {
       // For SSH/Telnet, first establish a connection
@@ -88,20 +85,10 @@ export async function getVlansFromSwitch(connectionDetails: SwitchConnectionDeta
       // Parse the output to extract VLAN information
       const parsedVlans = parseVlanOutput(output, connectionDetails.make || "unknown");
       
-      // Log raw results for debugging
-      console.log(`Raw parsed VLANs from ${connectionDetails.ip}:`, parsedVlans);
-      
       // Filter out invalid VLANs
       const validVlans = parsedVlans.filter(vlan => isValidVlanId(vlan.vlanId));
       
-      if (parsedVlans.length !== validVlans.length) {
-        console.warn(`Filtered out ${parsedVlans.length - validVlans.length} invalid VLANs from ${connectionDetails.ip}`);
-        console.warn(`Invalid VLAN IDs: ${parsedVlans
-          .filter(vlan => !isValidVlanId(vlan.vlanId))
-          .map(vlan => vlan.vlanId)
-          .join(', ')}`);
-      }
-      
+      console.log(`Final valid VLANs from ${connectionDetails.ip} (via ${connectionDetails.method}):`, validVlans);
       return validVlans;
     }
   } catch (error) {
@@ -140,13 +127,18 @@ function parseVlanOutput(output: string, make: string): DiscoveredVlan[] {
           const match = line.match(/^(\d+)\s+(\S+)\s+(\S+)\s+(.*)$/);
           if (match) {
             const [_, vlanId, name, status, ports] = match;
-            const portList = ports.split(',').map(p => p.trim()).filter(Boolean);
+            const vlanIdNumber = parseInt(vlanId, 10);
             
-            vlans.push({
-              vlanId: parseInt(vlanId),
-              name,
-              usedBy: portList
-            });
+            // Only include valid VLAN IDs (1-4094)
+            if (isValidVlanId(vlanIdNumber)) {
+              const portList = ports.split(',').map(p => p.trim()).filter(Boolean);
+              
+              vlans.push({
+                vlanId: vlanIdNumber,
+                name,
+                usedBy: portList
+              });
+            }
           }
         }
       }
@@ -162,20 +154,23 @@ function parseVlanOutput(output: string, make: string): DiscoveredVlan[] {
           
           if (nameMatch && idMatch) {
             const vlanName = nameMatch[1];
-            const vlanId = parseInt(idMatch[1]);
+            const vlanId = parseInt(idMatch[1], 10);
             
-            // Extract interfaces
-            const interfaces: string[] = [];
-            const interfaceMatches = block.matchAll(/(\S+\.\d+)(?:,|\s|$)/g);
-            for (const match of interfaceMatches) {
-              interfaces.push(match[1]);
+            // Only include valid VLAN IDs
+            if (isValidVlanId(vlanId)) {
+              // Extract interfaces
+              const interfaces: string[] = [];
+              const interfaceMatches = block.matchAll(/(\S+\.\d+)(?:,|\s|$)/g);
+              for (const match of interfaceMatches) {
+                interfaces.push(match[1]);
+              }
+              
+              vlans.push({
+                vlanId,
+                name: vlanName,
+                usedBy: interfaces
+              });
             }
-            
-            vlans.push({
-              vlanId,
-              name: vlanName,
-              usedBy: interfaces
-            });
           }
         }
       }
@@ -188,12 +183,16 @@ function parseVlanOutput(output: string, make: string): DiscoveredVlan[] {
         const match = line.match(/^\s*(\d+)\s+(\S+)\s+/);
         if (match) {
           const [_, vlanId, name] = match;
+          const vlanIdNumber = parseInt(vlanId, 10);
           
-          vlans.push({
-            vlanId: parseInt(vlanId),
-            name,
-            usedBy: [] // HP/Aruba often requires a separate command for port mapping
-          });
+          // Only include valid VLAN IDs
+          if (isValidVlanId(vlanIdNumber)) {
+            vlans.push({
+              vlanId: vlanIdNumber,
+              name,
+              usedBy: [] // HP/Aruba often requires a separate command for port mapping
+            });
+          }
         }
       }
     } else {
@@ -205,12 +204,16 @@ function parseVlanOutput(output: string, make: string): DiscoveredVlan[] {
         const match = line.match(/(\d+)\s+(\S+)/);
         if (match) {
           const [_, vlanId, name] = match;
+          const vlanIdNumber = parseInt(vlanId, 10);
           
-          vlans.push({
-            vlanId: parseInt(vlanId),
-            name,
-            usedBy: []
-          });
+          // Only include valid VLAN IDs
+          if (isValidVlanId(vlanIdNumber)) {
+            vlans.push({
+              vlanId: vlanIdNumber,
+              name,
+              usedBy: []
+            });
+          }
         }
       }
     }
@@ -218,7 +221,8 @@ function parseVlanOutput(output: string, make: string): DiscoveredVlan[] {
     console.error(`Error parsing VLAN output for ${make}:`, error);
   }
   
-  return vlans;
+  // Sort by VLAN ID for consistency
+  return vlans.sort((a, b) => a.vlanId - b.vlanId);
 }
 
 /**
@@ -230,7 +234,6 @@ export async function discoverVlans(
 ): Promise<DiscoveredVlan[]> {
   const allVlans: DiscoveredVlan[] = [];
   const uniqueVlanIds = new Set<number>();
-  const invalidVlanIds = new Set<number>(); // Track invalid VLANs for logging
   
   // Filter devices to just get switches
   const switches = devices.filter(device => 
@@ -264,101 +267,97 @@ export async function discoverVlans(
   // Log discovery process
   console.log(`Starting VLAN discovery on ${switches.length} switches`);
   
-  // Process each switch
-  for (const switchDevice of switches) {
-    if (progressCallback) {
-      progressCallback(
-        `Connecting to ${switchDevice.hostname || switchDevice.ip_address}...`, 
-        (processedDevices / switches.length) * 100
-      );
-    }
-    
-    // Find subnet for this device to get credentials
-    const subnet = subnets.find(s => {
-      const [subnetBase, mask] = s.cidr.split('/');
-      const ipParts = subnetBase.split('.');
-      const deviceIpParts = switchDevice.ip_address.split('.');
-      
-      // Basic check - just compare first three octets for a /24
-      return (
-        ipParts[0] === deviceIpParts[0] && 
-        ipParts[1] === deviceIpParts[1] && 
-        ipParts[2] === deviceIpParts[2]
-      );
-    });
-    
-    if (!subnet) {
-      console.warn(`No subnet information found for ${switchDevice.ip_address}`);
-      continue;
-    }
-    
-    // Get connection details from the subnet information
-    const connectionDetails: SwitchConnectionDetails = {
-      ip: switchDevice.ip_address,
-      method: subnet.access_method || 'snmp',
-      make: switchDevice.make || "Cisco", // Default to Cisco based on user's output
-      model: switchDevice.model
-    };
-    
-    // Set credentials based on access method
-    if (connectionDetails.method === 'snmp') {
-      connectionDetails.community = subnet.snmp_community || 'public';
-      connectionDetails.version = subnet.snmp_version as "1" | "2c" | "3" || '2c';
-    } else {
-      connectionDetails.username = subnet.username || 'admin';
-      connectionDetails.password = subnet.password || 'password';
-    }
-    
-    try {
-      console.log(`Discovering VLANs from ${switchDevice.ip_address} (${switchDevice.hostname || 'unknown'}) via ${connectionDetails.method}`);
-      const discoveredVlans = await getVlansFromSwitch(connectionDetails);
-      console.log(`Found ${discoveredVlans.length} valid VLANs on ${switchDevice.ip_address}`);
-      
-      // Add discovered VLANs to the collection, filtering out invalid ones
-      for (const vlan of discoveredVlans) {
-        // Double-check VLAN ID is valid before adding
-        if (!isValidVlanId(vlan.vlanId)) {
-          invalidVlanIds.add(vlan.vlanId);
-          continue;
-        }
-        
-        if (!uniqueVlanIds.has(vlan.vlanId)) {
-          uniqueVlanIds.add(vlan.vlanId);
-          
-          // Add the current device to usedBy if not already present
-          const deviceName = switchDevice.hostname || switchDevice.ip_address;
-          if (!vlan.usedBy.includes(deviceName)) {
-            vlan.usedBy.push(deviceName);
-          }
-          
-          allVlans.push(vlan);
-        } else {
-          // Update existing VLAN entry
-          const existingVlan = allVlans.find(v => v.vlanId === vlan.vlanId);
-          if (existingVlan) {
-            // Add the current device to usedBy if not already present
-            const deviceName = switchDevice.hostname || switchDevice.ip_address;
-            if (!existingVlan.usedBy.includes(deviceName)) {
-              existingVlan.usedBy.push(deviceName);
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`Error discovering VLANs from ${switchDevice.ip_address}:`, error);
-    }
-    
-    processedDevices++;
+  // Process each switch - limit to one switch for testing
+  const primarySwitch = switches[0]; // Focus on the first switch only initially
+  console.log(`Limiting VLAN discovery to primary switch: ${primarySwitch.hostname || primarySwitch.ip_address}`);
+  
+  if (progressCallback) {
+    progressCallback(
+      `Connecting to ${primarySwitch.hostname || primarySwitch.ip_address}...`, 
+      10
+    );
   }
   
-  if (invalidVlanIds.size > 0) {
-    console.warn(`Found ${invalidVlanIds.size} invalid VLAN IDs: ${Array.from(invalidVlanIds).join(', ')}`);
+  // Find subnet for this device to get credentials
+  const subnet = subnets.find(s => {
+    const [subnetBase, mask] = s.cidr.split('/');
+    const ipParts = subnetBase.split('.');
+    const deviceIpParts = primarySwitch.ip_address.split('.');
+    
+    // Basic check - just compare first three octets for a /24
+    return (
+      ipParts[0] === deviceIpParts[0] && 
+      ipParts[1] === deviceIpParts[1] && 
+      (mask === '24' ? ipParts[2] === deviceIpParts[2] : true)
+    );
+  });
+  
+  if (!subnet) {
+    console.warn(`No subnet information found for ${primarySwitch.ip_address}`);
+    return [];
+  }
+  
+  // Get connection details from the subnet information
+  const connectionDetails: SwitchConnectionDetails = {
+    ip: primarySwitch.ip_address,
+    method: subnet.access_method || 'snmp',
+    make: primarySwitch.make || "Cisco", // Default to Cisco
+    model: primarySwitch.model
+  };
+  
+  // Set credentials based on access method
+  if (connectionDetails.method === 'snmp') {
+    connectionDetails.community = subnet.snmp_community || 'public';
+    connectionDetails.version = subnet.snmp_version as "1" | "2c" | "3" || '2c';
+  } else {
+    connectionDetails.username = subnet.username || 'admin';
+    connectionDetails.password = subnet.password || 'password';
+  }
+  
+  try {
+    console.log(`Discovering VLANs from ${primarySwitch.ip_address} (${primarySwitch.hostname || 'unknown'}) via ${connectionDetails.method}`);
+    
+    if (progressCallback) {
+      progressCallback(
+        `Retrieving VLAN data from ${primarySwitch.hostname || primarySwitch.ip_address}...`, 
+        30
+      );
+    }
+    
+    const discoveredVlans = await getVlansFromSwitch(connectionDetails);
+    console.log(`Found ${discoveredVlans.length} valid VLANs on ${primarySwitch.ip_address}`);
+    
+    if (progressCallback) {
+      progressCallback(
+        `Processing ${discoveredVlans.length} VLANs...`, 
+        70
+      );
+    }
+    
+    // Add the discovered VLANs to our collection
+    for (const vlan of discoveredVlans) {
+      if (!uniqueVlanIds.has(vlan.vlanId)) {
+        uniqueVlanIds.add(vlan.vlanId);
+        
+        // Add the current device to usedBy if not already present
+        const deviceName = primarySwitch.hostname || primarySwitch.ip_address;
+        if (!vlan.usedBy.includes(deviceName)) {
+          vlan.usedBy.push(deviceName);
+        }
+        
+        allVlans.push(vlan);
+      }
+    }
+  } catch (error) {
+    console.error(`Error discovering VLANs from ${primarySwitch.ip_address}:`, error);
   }
   
   if (progressCallback) {
     progressCallback("VLAN discovery complete", 100);
   }
   
-  console.log(`VLAN discovery complete. Found ${allVlans.length} unique valid VLANs.`);
-  return allVlans;
+  // Sort VLANs by ID for consistency
+  const sortedVlans = allVlans.sort((a, b) => a.vlanId - b.vlanId);
+  console.log(`VLAN discovery complete. Found ${sortedVlans.length} unique valid VLANs.`);
+  return sortedVlans;
 }

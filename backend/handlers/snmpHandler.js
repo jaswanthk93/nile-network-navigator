@@ -232,11 +232,16 @@ exports.discoverVlans = async (req, res) => {
       return res.status(400).json({ error: 'IP address is required' });
     }
     
+    logger.info(`VLAN discovery request received for ${ip} using SNMPv${version}`);
+    
+    const vlanHandler = require('./vlanHandler');
     const result = await vlanHandler.discoverVlans(ip, community, version, make);
+    
+    logger.info(`VLAN discovery completed for ${ip}: found ${result.vlans.length} valid VLANs`);
     
     res.json(result);
   } catch (error) {
-    console.error('SNMP VLAN discovery error:', error);
+    logger.error('SNMP VLAN discovery error:', error);
     res.status(500).json({ error: error.message });
   }
 };
