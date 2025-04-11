@@ -19,4 +19,4 @@ export {
 export {
   getVlansFromSwitch,
   discoverVlans
-} from './vlanDiscovery';
+} from './network/vlanDiscovery';
