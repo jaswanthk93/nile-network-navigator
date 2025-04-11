@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -124,6 +125,7 @@ const VlansPage = () => {
             .eq('id', primarySwitch.subnet_id)
             .single();
             
+          // Fixed line: pass correct parameters to discoverVlans as strings
           const discoveredVlans = await discoverVlans(
             primarySwitch.ip_address,
             subnetData?.snmp_community || 'public',

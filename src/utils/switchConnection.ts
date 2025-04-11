@@ -8,9 +8,9 @@
 export { isValidVlanId } from './networkValidation';
 export { 
   connectToSwitch,
-  executeCommands,
-  type SwitchConnectionDetails
+  executeCommands
 } from './deviceConnection';
+export type { SwitchConnectionDetails } from '../types/network';
 export {
   executeSnmpQueries,
   executeSnmpWalk,

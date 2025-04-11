@@ -1,6 +1,6 @@
 
 import { callBackendApi, disconnectSession } from "./apiClient";
-import { SwitchConnectionDetails } from "./types/network";
+import { SwitchConnectionDetails } from "../types/network";
 
 /**
  * Connect to a switch using selected method (SNMP, SSH, Telnet)
