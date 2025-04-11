@@ -1,7 +1,7 @@
 
-import { DiscoveredVlan } from "../../types/network";
+import { DiscoveredVlan, SwitchConnectionDetails } from "../../types/network";
 import { isValidVlanId } from "../networkValidation";
-import { connectToSwitch, executeCommands, SwitchConnectionDetails } from "../deviceConnection";
+import { connectToSwitch, executeCommands } from "../deviceConnection";
 import { callBackendApi, disconnectSession } from "../apiClient";
 import { parseVlanOutput } from "./vlanParsing";
 

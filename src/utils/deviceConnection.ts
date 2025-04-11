@@ -1,17 +1,6 @@
 
 import { callBackendApi, disconnectSession } from "./apiClient";
-
-// Interface for switch connection details
-export interface SwitchConnectionDetails {
-  ip: string;
-  community?: string;  // SNMP community string (typically 'public' or 'private')
-  version?: "1" | "2c" | "3";  // SNMP version
-  username?: string;  // For SNMPv3 or SSH/Telnet
-  password?: string;  // For SNMPv3 or SSH/Telnet
-  method: "snmp" | "ssh" | "telnet";
-  make?: string;
-  model?: string;
-}
+import { SwitchConnectionDetails } from "./types/network";
 
 /**
  * Connect to a switch using selected method (SNMP, SSH, Telnet)

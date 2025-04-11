@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -10,6 +9,7 @@ import { FolderKanbanIcon, LayersIcon, TagIcon, Loader2Icon, AlertTriangleIcon }
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { discoverVlans } from "@/utils/switchConnection";
+import { DeviceData } from "@/types/network";
 
 interface Vlan {
   id: string;
@@ -46,7 +46,6 @@ const VlansPage = () => {
     try {
       setLoading(true);
       
-      // Fetch devices from the database
       const { data: devices, error: devicesError } = await supabase
         .from('devices')
         .select('*')
@@ -56,7 +55,6 @@ const VlansPage = () => {
         throw new Error(`Error fetching devices: ${devicesError.message}`);
       }
 
-      // Check if we have any devices
       if (!devices || devices.length === 0) {
         toast({
           title: "No Devices Found",
@@ -68,7 +66,6 @@ const VlansPage = () => {
         return;
       }
 
-      // Fetch VLANs from the database
       const { data: vlanData, error: vlansError } = await supabase
         .from('vlans')
         .select('*')
@@ -78,11 +75,9 @@ const VlansPage = () => {
         throw new Error(`Error fetching VLANs: ${vlansError.message}`);
       }
 
-      // If we don't have VLAN data already, we need to fetch from the network
       if (!vlanData || vlanData.length === 0) {
         console.log("No VLANs found in database, attempting to discover...");
         
-        // Group devices by category to identify switches
         const switches = devices.filter(device => 
           device.category === 'Switch' || device.make === 'Cisco' || device.make === 'Juniper'
         );
@@ -100,7 +95,6 @@ const VlansPage = () => {
         
         setDiscoveryInProgress(true);
         
-        // Start the VLAN discovery process
         const updateProgress = (message: string, progress: number) => {
           setDiscoveryProgress({
             message,
@@ -108,77 +102,108 @@ const VlansPage = () => {
           });
         };
         
-        // Use our discovery method with real backend data
-        const discoveredVlans = await discoverVlans(devices, updateProgress);
-        console.log("Raw discovered VLANs:", discoveredVlans);
+        const primarySwitch = switches.find(device => device.make?.toLowerCase().includes('cisco')) || switches[0];
         
-        if (discoveredVlans.length === 0) {
+        if (!primarySwitch) {
           toast({
             title: "VLAN Discovery",
-            description: `Unable to discover VLANs automatically. Please define VLANs manually or check device connectivity.`,
+            description: "No suitable switch found for VLAN discovery.",
             variant: "destructive",
           });
-          
-          // Create default VLAN as fallback
-          const defaultVlans: Vlan[] = [
-            {
-              id: "1",
-              vlanId: 1,
-              name: "Default",
-              segmentName: "Management",
-              subnet: "", 
-              usedBy: switches.map(s => s.hostname || s.ip_address).filter(Boolean) as string[]
-            }
-          ];
-          
-          setVlans(defaultVlans);
-        } else {
-          // Map discovered VLANs to our interface and filter out invalid VLANs
-          const valid: Vlan[] = [];
-          const invalid: Vlan[] = [];
-          
-          discoveredVlans.forEach((vlan, index) => {
-            const mappedVlan: Vlan = {
-              id: `discovered-${vlan.vlanId}`,
-              vlanId: vlan.vlanId,
-              name: vlan.name,
-              segmentName: "", // User will need to assign this
-              subnet: vlan.subnet || "",
-              usedBy: vlan.usedBy
-            };
+          setDiscoveryInProgress(false);
+          setLoading(false);
+          return;
+        }
+        
+        console.log("Selected primary switch for VLAN discovery:", primarySwitch);
+        
+        try {
+          const { data: subnetData } = await supabase
+            .from('subnets')
+            .select('*')
+            .eq('id', primarySwitch.subnet_id)
+            .single();
             
-            if (isValidVlanId(vlan.vlanId)) {
-              valid.push(mappedVlan);
-            } else {
-              invalid.push(mappedVlan);
-            }
-          });
+          const discoveredVlans = await discoverVlans(
+            primarySwitch.ip_address,
+            subnetData?.snmp_community || 'public',
+            subnetData?.snmp_version as "1" | "2c" | "3" || '2c',
+            primarySwitch.make || 'Cisco'
+          );
           
-          setVlans(valid);
-          setInvalidVlans(invalid);
+          console.log("Raw discovered VLANs:", discoveredVlans);
           
-          if (invalid.length > 0) {
+          if (discoveredVlans.length === 0) {
             toast({
-              title: "Invalid VLAN IDs detected",
-              description: `${invalid.length} VLANs were filtered out because they had IDs outside the valid range (${MIN_VLAN_ID}-${MAX_VLAN_ID}).`,
+              title: "VLAN Discovery",
+              description: `Unable to discover VLANs automatically. Please define VLANs manually or check device connectivity.`,
               variant: "destructive",
+            });
+            
+            const defaultVlans: Vlan[] = [
+              {
+                id: "1",
+                vlanId: 1,
+                name: "Default",
+                segmentName: "Management",
+                subnet: "", 
+                usedBy: switches.map(s => s.hostname || s.ip_address).filter(Boolean) as string[]
+              }
+            ];
+            
+            setVlans(defaultVlans);
+          } else {
+            const valid: Vlan[] = [];
+            const invalid: Vlan[] = [];
+            
+            discoveredVlans.forEach((vlan, index) => {
+              const mappedVlan: Vlan = {
+                id: `discovered-${vlan.vlanId}`,
+                vlanId: vlan.vlanId,
+                name: vlan.name,
+                segmentName: "", // User will need to assign this
+                subnet: vlan.subnet || "",
+                usedBy: vlan.usedBy
+              };
+              
+              if (isValidVlanId(vlan.vlanId)) {
+                valid.push(mappedVlan);
+              } else {
+                invalid.push(mappedVlan);
+              }
+            });
+            
+            setVlans(valid);
+            setInvalidVlans(invalid);
+            
+            if (invalid.length > 0) {
+              toast({
+                title: "Invalid VLAN IDs detected",
+                description: `${invalid.length} VLANs were filtered out because they had IDs outside the valid range (${MIN_VLAN_ID}-${MAX_VLAN_ID}).`,
+                variant: "destructive",
+              });
+            }
+            
+            toast({
+              title: "VLAN Discovery Complete",
+              description: `Successfully discovered ${valid.length} valid VLANs from your network devices.`,
             });
           }
           
+          setDiscoveryInProgress(false);
+        } catch (error) {
+          console.error("Error during VLAN discovery:", error);
           toast({
-            title: "VLAN Discovery Complete",
-            description: `Successfully discovered ${valid.length} valid VLANs from your network devices.`,
+            title: "VLAN Discovery Error",
+            description: error instanceof Error ? error.message : "An unexpected error occurred",
+            variant: "destructive",
           });
         }
-        
-        setDiscoveryInProgress(false);
       } else {
-        // Format the database VLANs to match our interface, filtering out invalid ones
         const valid: Vlan[] = [];
         const invalid: Vlan[] = [];
         
         vlanData.forEach(dbVlan => {
-          // Find devices that might be using this VLAN
           const vlanDevices = devices
             .filter(d => d.category === 'Switch' || d.make === 'Cisco' || d.make === 'Juniper')
             .slice(0, 3)

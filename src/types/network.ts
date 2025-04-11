@@ -27,6 +27,20 @@ export interface SnmpConnectionDetails {
 }
 
 /**
+ * Interface for switch connection details
+ */
+export interface SwitchConnectionDetails {
+  ip: string;
+  community?: string;
+  version?: "1" | "2c" | "3";
+  username?: string;
+  password?: string;
+  method: "snmp" | "ssh" | "telnet";
+  make?: string;
+  model?: string;
+}
+
+/**
  * Interface for subnet access configuration
  */
 export interface SubnetAccess {
