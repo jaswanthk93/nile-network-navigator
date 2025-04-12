@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/use-toast";
-import { MapPinIcon, PlusIcon, TrashIcon, KeyIcon, EditIcon } from "lucide-react";
+import { MapPinIcon, PlusIcon, TrashIcon, KeyIcon, EditIcon, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -74,6 +74,7 @@ const SiteSubnetPage = () => {
   const [editingSubnet, setEditingSubnet] = useState<string | null>(null);
   const [siteAdded, setSiteAdded] = useState(false);
   const [currentSiteId, setCurrentSiteId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -104,58 +105,90 @@ const SiteSubnetPage = () => {
 
   useEffect(() => {
     const loadExistingData = async () => {
-      if (!user) return;
-      
-      const { data: sites, error: sitesError } = await supabase
-        .from('sites')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(1);
-      
-      if (sitesError) {
-        console.error("Error loading sites:", sitesError);
+      if (!user) {
+        setIsLoading(false);
         return;
       }
       
-      if (sites && sites.length > 0) {
-        const site = sites[0];
-        setCurrentSiteId(site.id);
-        siteForm.setValue('siteName', site.name);
-        siteForm.setValue('address', site.location || '');
-        setSiteAdded(true);
+      try {
+        console.log("Loading site data for user:", user.id);
         
-        const { data: subnetData, error: subnetsError } = await supabase
-          .from('subnets')
+        const { data: sites, error: sitesError } = await supabase
+          .from('sites')
           .select('*')
-          .eq('site_id', site.id)
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(1);
         
-        if (subnetsError) {
-          console.error("Error loading subnets:", subnetsError);
+        if (sitesError) {
+          console.error("Error loading sites:", sitesError);
+          toast({
+            title: "Error loading site data",
+            description: sitesError.message,
+            variant: "destructive",
+          });
+          setIsLoading(false);
           return;
         }
         
-        if (subnetData && subnetData.length > 0) {
-          const loadedSubnets = subnetData.map(subnet => ({
-            id: subnet.id,
-            name: subnet.description || 'Subnet',
-            subnet: subnet.cidr.split('/')[0],
-            prefix: subnet.cidr.split('/')[1] || '24',
-            username: subnet.username || '',
-            password: subnet.password || '',
-            community: subnet.snmp_community || 'public',
-            snmpVersion: subnet.snmp_version as "1" | "2c" | "3" || '2c',
-            accessMethod: subnet.access_method as "ssh" | "telnet" | "snmp" || 'snmp'
-          }));
+        console.log("Sites data loaded:", sites);
+        
+        if (sites && sites.length > 0) {
+          const site = sites[0];
+          setCurrentSiteId(site.id);
+          siteForm.setValue('siteName', site.name);
+          siteForm.setValue('address', site.location || '');
+          setSiteAdded(true);
           
-          setSubnets(loadedSubnets);
+          const { data: subnetData, error: subnetsError } = await supabase
+            .from('subnets')
+            .select('*')
+            .eq('site_id', site.id)
+            .eq('user_id', user.id);
+          
+          if (subnetsError) {
+            console.error("Error loading subnets:", subnetsError);
+            toast({
+              title: "Error loading subnet data",
+              description: subnetsError.message,
+              variant: "destructive",
+            });
+            setIsLoading(false);
+            return;
+          }
+          
+          console.log("Subnets data loaded:", subnetData);
+          
+          if (subnetData && subnetData.length > 0) {
+            const loadedSubnets = subnetData.map(subnet => ({
+              id: subnet.id,
+              name: subnet.description || 'Subnet',
+              subnet: subnet.cidr.split('/')[0],
+              prefix: subnet.cidr.split('/')[1] || '24',
+              username: subnet.username || '',
+              password: subnet.password || '',
+              community: subnet.snmp_community || 'public',
+              snmpVersion: subnet.snmp_version as "1" | "2c" | "3" || '2c',
+              accessMethod: subnet.access_method as "ssh" | "telnet" | "snmp" || 'snmp'
+            }));
+            
+            setSubnets(loadedSubnets);
+          }
         }
+      } catch (error) {
+        console.error("Error in loadExistingData:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load site data. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
       }
     };
     
     loadExistingData();
-  }, [user]);
+  }, [user, toast, siteForm]);
 
   const onSiteSubmit = async (values: SiteFormValues) => {
     if (!user) {
@@ -430,6 +463,15 @@ const SiteSubnetPage = () => {
     sessionStorage.setItem('subnetIds', JSON.stringify(subnets.map(subnet => subnet.id)));
     navigate("/discovery");
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center py-10">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2 text-lg">Loading site data...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto max-w-4xl space-y-8">
