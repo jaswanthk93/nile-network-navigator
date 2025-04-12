@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -6,11 +5,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
-import { FolderKanbanIcon, LayersIcon, TagIcon, Loader2Icon, AlertTriangleIcon, CheckCircleIcon, XCircleIcon, HelpCircleIcon } from "lucide-react";
+import { FolderKanbanIcon, LayersIcon, TagIcon, Loader2Icon, AlertTriangleIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { discoverVlans } from "@/utils/network/vlanDiscovery";
-import { DeviceData } from "@/types/network";
 
 interface Vlan {
   id: string;
@@ -19,9 +17,6 @@ interface Vlan {
   segmentName: string;
   subnet?: string;
   usedBy: string[];
-  suggestedSegmentName?: string;
-  suggestionAccepted?: boolean;
-  suggestionRejected?: boolean;
 }
 
 const MIN_VLAN_ID = 1;
@@ -163,18 +158,14 @@ const VlansPage = () => {
             
             discoveredVlans.forEach((vlan) => {
               const vlanName = vlan.name?.trim();
-              const suggestedSegmentName = vlanName && vlanName.length > 0 ? vlanName : "";
               
               const mappedVlan: Vlan = {
                 id: `discovered-${vlan.vlanId}`,
                 vlanId: vlan.vlanId,
                 name: vlan.name,
-                segmentName: "",
+                segmentName: vlanName || "",
                 subnet: vlan.subnet || "",
-                usedBy: vlan.usedBy,
-                suggestedSegmentName: suggestedSegmentName,
-                suggestionAccepted: false,
-                suggestionRejected: false
+                usedBy: vlan.usedBy
               };
               
               if (isValidVlanId(vlan.vlanId)) {
@@ -225,8 +216,8 @@ const VlansPage = () => {
             id: dbVlan.id,
             vlanId: dbVlan.vlan_id,
             name: dbVlan.name,
-            segmentName: dbVlan.description || "",
-            subnet: "", // Would be populated from real data
+            segmentName: dbVlan.description || dbVlan.name,
+            subnet: "",
             usedBy: vlanDevices
           };
           
@@ -288,42 +279,57 @@ const VlansPage = () => {
       }
     }
     
-    setVlans(vlans.map(vlan => 
-      vlan.id === id ? { ...vlan, [field]: field === "vlanId" ? parseInt(value, 10) : value } : vlan
-    ));
+    if (field === "name") {
+      setVlans(vlans.map(vlan => {
+        if (vlan.id === id) {
+          const updatedSegmentName = !vlan.segmentName ? value : vlan.segmentName;
+          return { 
+            ...vlan, 
+            [field]: value,
+            segmentName: updatedSegmentName
+          };
+        }
+        return vlan;
+      }));
+    } else {
+      setVlans(vlans.map(vlan => 
+        vlan.id === id ? { ...vlan, [field]: field === "vlanId" ? parseInt(value, 10) : value } : vlan
+      ));
+    }
     setEditingCell(null);
   };
 
-  const handleAcceptSuggestion = (id: string) => {
-    setVlans(vlans.map(vlan => {
-      if (vlan.id === id && vlan.suggestedSegmentName) {
-        return { 
-          ...vlan, 
-          segmentName: vlan.suggestedSegmentName, 
-          suggestionAccepted: true,
-          suggestionRejected: false
-        };
-      }
-      return vlan;
-    }));
+  const handleAddVlan = () => {
+    const maxVlanId = Math.max(...vlans.map(v => v.vlanId), 0);
+    let newVlanId = maxVlanId + 10;
     
-    toast({
-      title: "Suggestion Accepted",
-      description: "VLAN name applied as segment name.",
-    });
+    if (newVlanId > MAX_VLAN_ID) {
+      newVlanId = Math.min(...vlans.map(v => v.vlanId).filter(id => id > MIN_VLAN_ID), MAX_VLAN_ID);
+      if (newVlanId === Infinity) {
+        newVlanId = MIN_VLAN_ID;
+      }
+    }
+    
+    const vlanName = `VLAN_${newVlanId}`;
+    
+    const newVlan: Vlan = {
+      id: `new-${Date.now()}`,
+      vlanId: newVlanId,
+      name: vlanName,
+      segmentName: vlanName,
+      subnet: "",
+      usedBy: []
+    };
+    
+    setVlans([...vlans, newVlan]);
+    
+    setTimeout(() => {
+      setEditingCell({id: newVlan.id, field: "name"});
+    }, 100);
   };
 
-  const handleRejectSuggestion = (id: string) => {
-    setVlans(vlans.map(vlan => {
-      if (vlan.id === id) {
-        return { 
-          ...vlan, 
-          suggestionRejected: true,
-          suggestionAccepted: false 
-        };
-      }
-      return vlan;
-    }));
+  const handleRemoveVlan = (id: string) => {
+    setVlans(vlans.filter(vlan => vlan.id !== id));
   };
 
   const handleConfirmVlans = async () => {
@@ -345,10 +351,8 @@ const VlansPage = () => {
     try {
       setLoading(true);
 
-      // Get the current site ID or create a default one if needed
       let siteId = localStorage.getItem('currentSiteId');
       
-      // If no site ID exists, we need to create a default site
       if (!siteId) {
         console.log("No site ID found in localStorage, creating a default site");
         
@@ -373,17 +377,16 @@ const VlansPage = () => {
       const vlansToSave = vlans.map(vlan => {
         const isNewVlan = vlan.id.startsWith('discovered-') || vlan.id.startsWith('new-');
         
-        // Define the object type with an optional id property
         const vlanObject: {
           user_id: string;
           site_id: string;
           vlan_id: number;
           name: string;
           description: string;
-          id?: string; // Make id optional so we can add it conditionally
+          id?: string;
         } = {
           user_id: user!.id,
-          site_id: siteId as string, // Use the siteId which is now guaranteed to exist
+          site_id: siteId as string,
           vlan_id: vlan.vlanId,
           name: vlan.name,
           description: vlan.segmentName
@@ -425,37 +428,6 @@ const VlansPage = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleAddVlan = () => {
-    const maxVlanId = Math.max(...vlans.map(v => v.vlanId), 0);
-    let newVlanId = maxVlanId + 10;
-    
-    if (newVlanId > MAX_VLAN_ID) {
-      newVlanId = Math.min(...vlans.map(v => v.vlanId).filter(id => id > MIN_VLAN_ID), MAX_VLAN_ID);
-      if (newVlanId === Infinity) {
-        newVlanId = MIN_VLAN_ID;
-      }
-    }
-    
-    const newVlan: Vlan = {
-      id: `new-${Date.now()}`,
-      vlanId: newVlanId,
-      name: `VLAN_${newVlanId}`,
-      segmentName: "",
-      subnet: "",
-      usedBy: []
-    };
-    
-    setVlans([...vlans, newVlan]);
-    
-    setTimeout(() => {
-      setEditingCell({id: newVlan.id, field: "name"});
-    }, 100);
-  };
-
-  const handleRemoveVlan = (id: string) => {
-    setVlans(vlans.filter(vlan => vlan.id !== id));
   };
 
   if (loading) {
@@ -622,41 +594,12 @@ const VlansPage = () => {
                               autoFocus
                             />
                           ) : (
-                            <div className="space-y-2">
-                              <div
-                                className="flex cursor-pointer items-center gap-1 hover:text-primary"
-                                onClick={() => setEditingCell({id: vlan.id, field: "segmentName"})}
-                              >
-                                <TagIcon className="h-4 w-4" />
-                                {vlan.segmentName || <span className="text-muted-foreground italic">Click to assign</span>}
-                              </div>
-                              
-                              {vlan.suggestedSegmentName && !vlan.suggestionAccepted && !vlan.suggestionRejected && (
-                                <div className="flex items-center gap-2 text-xs bg-muted/50 p-2 rounded">
-                                  <HelpCircleIcon className="h-4 w-4 text-amber-500" />
-                                  <span>Suggest using <span className="font-semibold">{vlan.suggestedSegmentName}</span> as segment name?</span>
-                                  <div className="flex ml-auto gap-1">
-                                    <Button 
-                                      variant="ghost" 
-                                      size="icon"
-                                      className="h-5 w-5 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                      onClick={() => handleAcceptSuggestion(vlan.id)}
-                                      title="Accept suggestion"
-                                    >
-                                      <CheckCircleIcon className="h-4 w-4" />
-                                    </Button>
-                                    <Button 
-                                      variant="ghost" 
-                                      size="icon"
-                                      className="h-5 w-5 text-destructive hover:bg-destructive/10"
-                                      onClick={() => handleRejectSuggestion(vlan.id)}
-                                      title="Reject suggestion"
-                                    >
-                                      <XCircleIcon className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
+                            <div
+                              className="flex cursor-pointer items-center gap-1 hover:text-primary"
+                              onClick={() => setEditingCell({id: vlan.id, field: "segmentName"})}
+                            >
+                              <TagIcon className="h-4 w-4" />
+                              {vlan.segmentName || <span className="text-muted-foreground italic">Click to assign</span>}
                             </div>
                           )}
                         </TableCell>
