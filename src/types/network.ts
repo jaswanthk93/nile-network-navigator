@@ -10,6 +10,18 @@ export interface DiscoveredVlan {
 }
 
 /**
+ * Interface for discovered MAC address
+ */
+export interface DiscoveredMacAddress {
+  macAddress: string;
+  vlanId: number;
+  port?: string;
+  status: "authenticated" | "unauthenticated" | "unknown";
+  deviceType: string;
+  selected?: boolean;
+}
+
+/**
  * Interface for device deletion request
  */
 export interface DeviceDeletionRequest {

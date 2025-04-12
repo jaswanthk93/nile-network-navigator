@@ -135,6 +135,44 @@ export async function executeSnmpWalk(
 }
 
 /**
+ * Discover MAC addresses on a switch using SNMP
+ */
+export async function discoverMacAddressesWithSNMP(
+  deviceIp: string,
+  community: string = 'public',
+  version: string = '2c',
+  vlanId?: number
+): Promise<{
+  macAddresses: Array<{
+    macAddress: string;
+    vlanId: number;
+    port: string;
+    status: string;
+    deviceType: string;
+  }>;
+  vlanIds: number[];
+}> {
+  try {
+    console.log(`Discovering MAC addresses for ${deviceIp} using SNMP...`);
+    
+    const result = await callBackendApi("/snmp/discover-mac-addresses", {
+      ip: deviceIp,
+      community,
+      version,
+      vlanId
+    });
+    
+    return {
+      macAddresses: result.macAddresses || [],
+      vlanIds: result.vlanIds || []
+    };
+  } catch (error) {
+    console.error("Error discovering MAC addresses with SNMP:", error);
+    throw error;
+  }
+}
+
+/**
  * Disconnect a session (SSH/Telnet)
  */
 export async function disconnectSession(

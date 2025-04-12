@@ -1,3 +1,4 @@
+
 const express = require('express');
 const cors = require('cors');
 const snmpHandler = require('./handlers/snmpHandler');
@@ -86,6 +87,8 @@ app.post('/api/snmp/connect', snmpHandler.connect);
 app.post('/api/snmp/get', snmpHandler.get);
 app.post('/api/snmp/walk', snmpHandler.walk);
 app.post('/api/snmp/discover-vlans', snmpHandler.discoverVlans);
+app.post('/api/snmp/discover-device', snmpHandler.discoverDevice);
+app.post('/api/snmp/discover-mac-addresses', snmpHandler.discoverMacAddresses);
 
 // SSH endpoints
 app.post('/api/ssh/connect', sshHandler.connect);
