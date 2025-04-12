@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -6,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
-import { ShareIcon, DownloadIcon, CheckIcon, TableIcon, EyeIcon, CodeIcon } from "lucide-react";
+import { ShareIcon, FileDown, CheckIcon, TableIcon, EyeIcon, CodeIcon } from "lucide-react";
 
 interface ExportData {
   macAddress: string;
@@ -73,7 +72,6 @@ const ExportPage = () => {
   const navigate = useNavigate();
 
   const handleExport = () => {
-    // In a real app, this would generate and download a CSV file
     setExportComplete(true);
     toast({
       title: "Export successful",
@@ -82,7 +80,6 @@ const ExportPage = () => {
   };
 
   const downloadCsv = () => {
-    // In a real app, this would trigger a file download
     toast({
       title: "CSV downloaded",
       description: "The CSV file has been downloaded to your device.",
@@ -205,7 +202,7 @@ const ExportPage = () => {
               </Button>
             ) : (
               <Button onClick={downloadCsv}>
-                <DownloadIcon className="h-4 w-4 mr-2" />
+                <FileDown className="h-4 w-4 mr-2" />
                 Download CSV
               </Button>
             )}

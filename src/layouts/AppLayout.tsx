@@ -19,7 +19,7 @@ import {
   Server, 
   Layers, 
   Radio, 
-  FileExport, 
+  FileDown, 
   LogOut 
 } from "lucide-react";
 import { useEffect } from "react";
@@ -108,7 +108,7 @@ const AppLayout = () => {
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild tooltip="Export">
                     <Link to="/export">
-                      <FileExport className="h-5 w-5" />
+                      <FileDown className="h-5 w-5" />
                       <span>Export</span>
                     </Link>
                   </SidebarMenuButton>
