@@ -30,6 +30,7 @@ export function LoginForm({ onError }: LoginFormProps) {
   useEffect(() => {
     // If already authenticated, redirect to home
     if (isAuthenticated) {
+      console.log("LoginForm: User is authenticated, redirecting to home page");
       navigate('/', { replace: true });
     }
   }, [isAuthenticated, navigate]);
@@ -57,11 +58,12 @@ export function LoginForm({ onError }: LoginFormProps) {
           variant: "destructive",
         });
       } else {
+        console.log("Login successful, should be redirected soon");
         toast({
           title: "Login successful",
           description: "You have been logged in",
         });
-        // Navigation is handled in the AuthContext
+        // Navigation is handled in the useEffect above when isAuthenticated changes
       }
     } catch (error) {
       console.error("Unexpected error during login:", error);
