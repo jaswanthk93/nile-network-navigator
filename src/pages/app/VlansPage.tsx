@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -347,7 +348,15 @@ const VlansPage = () => {
       const vlansToSave = vlans.map(vlan => {
         const isNewVlan = vlan.id.startsWith('discovered-') || vlan.id.startsWith('new-');
         
-        const vlanObject = {
+        // Define the object type with an optional id property
+        const vlanObject: {
+          user_id: string;
+          site_id: string | null;
+          vlan_id: number;
+          name: string;
+          description: string;
+          id?: string; // Make id optional so we can add it conditionally
+        } = {
           user_id: user!.id,
           site_id: localStorage.getItem('currentSiteId') || null,
           vlan_id: vlan.vlanId,
