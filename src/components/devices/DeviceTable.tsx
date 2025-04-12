@@ -1,74 +1,103 @@
 
-import React from "react";
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
-import DeviceTableRow from "./DeviceTableRow";
-
-interface Device {
-  id: string;
-  ipAddress: string;
-  hostname: string;
-  make: string;
-  model: string;
-  category: "AP" | "Switch" | "Controller" | "Router" | "Other";
-  status: "online" | "offline" | "unknown";
-  needsVerification: boolean;
-  confirmed: boolean;
-  sysDescr?: string;
-}
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DeviceTableRow } from "./DeviceTableRow";
+import { DeviceFilter } from "./DeviceFilter";
 
 interface DeviceTableProps {
-  devices: Device[];
-  filteredDevices: Device[];
-  editingId: string | null;
-  setEditingId: (id: string | null) => void;
-  handleSaveEdit: (id: string, field: string, value: string) => void;
+  devices: any[];
+  isLoading: boolean;
+  onSaveEdit: (id: string, field: string, value: string) => void;
+  onDeleteDevice: (id: string, isSwitch: boolean) => void;
 }
 
-const DeviceTable: React.FC<DeviceTableProps> = ({
-  devices,
-  filteredDevices,
-  editingId,
-  setEditingId,
-  handleSaveEdit,
-}) => {
+export function DeviceTable({ 
+  devices, 
+  isLoading,
+  onSaveEdit,
+  onDeleteDevice
+}: DeviceTableProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+
+  const filteredDevices = devices
+    .filter(device => {
+      const matchesSearch = 
+        !searchQuery || 
+        device.ipAddress.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        (device.hostname && device.hostname.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (device.make && device.make.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (device.model && device.model.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      const matchesCategory = !categoryFilter || device.category === categoryFilter;
+      
+      return matchesSearch && matchesCategory;
+    });
+
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[100px]">IP Address</TableHead>
-            <TableHead>Hostname</TableHead>
-            <TableHead>Make</TableHead>
-            <TableHead>Model</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="w-[80px] text-center">Verified</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filteredDevices.length === 0 ? (
+    <div className="space-y-4">
+      <div className="flex flex-col space-y-2 sm:flex-row sm:space-x-2 sm:space-y-0">
+        <div className="flex-1">
+          <Input
+            placeholder="Search devices..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full"
+          />
+        </div>
+        <div>
+          <DeviceFilter
+            selectedCategory={categoryFilter}
+            onCategoryChange={setCategoryFilter}
+          />
+        </div>
+      </div>
+      
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell colSpan={7} className="text-center py-4 text-muted-foreground">
-                {devices.length === 0 
-                  ? "No devices discovered yet. Run a network discovery first." 
-                  : "No devices found matching filter criteria"}
-              </TableCell>
+              <TableHead>IP Address</TableHead>
+              <TableHead>Hostname</TableHead>
+              <TableHead>Make</TableHead>
+              <TableHead>Model</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="w-[60px]"></TableHead>
             </TableRow>
-          ) : (
-            filteredDevices.map((device) => (
-              <DeviceTableRow
-                key={device.id}
-                device={device}
-                editingId={editingId}
-                setEditingId={setEditingId}
-                handleSaveEdit={handleSaveEdit}
-              />
-            ))
-          )}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow>
+                <td colSpan={7} className="h-24 text-center">
+                  Loading...
+                </td>
+              </TableRow>
+            ) : filteredDevices.length === 0 ? (
+              <TableRow>
+                <td colSpan={7} className="h-24 text-center">
+                  No devices found. Try a different search.
+                </td>
+              </TableRow>
+            ) : (
+              filteredDevices.map((device) => (
+                <DeviceTableRow 
+                  key={device.id} 
+                  device={device} 
+                  onSaveEdit={onSaveEdit}
+                  onDeleteDevice={onDeleteDevice}
+                />
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      
+      <div className="text-sm text-muted-foreground">
+        Showing {filteredDevices.length} of {devices.length} devices
+      </div>
     </div>
   );
-};
-
-export default DeviceTable;
+}

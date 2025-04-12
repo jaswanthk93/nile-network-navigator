@@ -1,9 +1,26 @@
 
-import React from "react";
-import { TableRow, TableCell } from "@/components/ui/table";
+import { useState } from "react";
+import { TableCell, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircleIcon, AlertCircleIcon, WifiIcon, ServerIcon, MonitorIcon, RouterIcon, PrinterIcon } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Trash2, Check, Edit2, X } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface DeviceTableRowProps {
   device: {
@@ -18,152 +35,282 @@ interface DeviceTableRowProps {
     confirmed: boolean;
     sysDescr?: string;
   };
-  editingId: string | null;
-  setEditingId: (id: string | null) => void;
-  handleSaveEdit: (id: string, field: string, value: string) => void;
+  onSaveEdit: (id: string, field: string, value: string) => void;
+  onDeleteDevice: (id: string, isSwitch: boolean) => void;
 }
 
-const DeviceTableRow: React.FC<DeviceTableRowProps> = ({
+export function DeviceTableRow({
   device,
-  editingId,
-  setEditingId,
-  handleSaveEdit,
-}) => {
-  const getDeviceIcon = (category: string) => {
-    switch(category) {
-      case "AP":
-        return <WifiIcon className="h-4 w-4" />;
-      case "Switch":
-        return <ServerIcon className="h-4 w-4" />;
-      case "Controller":
-        return <MonitorIcon className="h-4 w-4" />;
-      case "Router":
-        return <RouterIcon className="h-4 w-4" />;
-      default:
-        return <PrinterIcon className="h-4 w-4" />;
+  onSaveEdit,
+  onDeleteDevice,
+}: DeviceTableRowProps) {
+  const [editField, setEditField] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  const handleEdit = (field: string, value: string) => {
+    setEditField(field);
+    setEditValue(value);
+  };
+
+  const handleSave = () => {
+    if (editField) {
+      onSaveEdit(device.id, editField, editValue);
+      setEditField(null);
     }
   };
 
+  const handleCancel = () => {
+    setEditField(null);
+  };
+
+  const isSwitch = device.category === "Switch";
+
   return (
     <TableRow className={device.needsVerification ? "bg-amber-50" : ""}>
-      <TableCell>{device.ipAddress}</TableCell>
+      <TableCell className="font-mono">{device.ipAddress}</TableCell>
+      
       <TableCell>
-        {editingId === `${device.id}-hostname` ? (
-          <Input
-            defaultValue={device.hostname}
-            className="h-8"
-            onBlur={(e) => handleSaveEdit(device.id, "hostname", e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleSaveEdit(device.id, "hostname", (e.target as HTMLInputElement).value);
+        {editField === "hostname" ? (
+          <div className="flex space-x-2">
+            <Input
+              className="h-8 w-full"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-green-600"
+              onClick={handleSave}
+            >
+              <Check className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-red-600"
+              onClick={handleCancel}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-2">
+            <span>{device.hostname || "—"}</span>
+            {device.needsVerification && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground"
+                onClick={() => handleEdit("hostname", device.hostname)}
+              >
+                <Edit2 className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        )}
+      </TableCell>
+      
+      <TableCell>
+        {editField === "make" ? (
+          <div className="flex space-x-2">
+            <Input
+              className="h-8 w-full"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-green-600"
+              onClick={handleSave}
+            >
+              <Check className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-red-600"
+              onClick={handleCancel}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-2">
+            <span>{device.make || "—"}</span>
+            {device.needsVerification && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground"
+                onClick={() => handleEdit("make", device.make)}
+              >
+                <Edit2 className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        )}
+      </TableCell>
+      
+      <TableCell>
+        {editField === "model" ? (
+          <div className="flex space-x-2">
+            <Input
+              className="h-8 w-full"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-green-600"
+              onClick={handleSave}
+            >
+              <Check className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-red-600"
+              onClick={handleCancel}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-2">
+            <span>{device.model || "—"}</span>
+            {device.needsVerification && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground"
+                onClick={() => handleEdit("model", device.model)}
+              >
+                <Edit2 className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        )}
+      </TableCell>
+      
+      <TableCell>
+        {editField === "category" ? (
+          <div className="flex space-x-2">
+            <Select
+              value={editValue}
+              onValueChange={setEditValue}
+            >
+              <SelectTrigger className="h-8 w-full">
+                <SelectValue placeholder="Select..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Switch">Switch</SelectItem>
+                <SelectItem value="Router">Router</SelectItem>
+                <SelectItem value="AP">AP</SelectItem>
+                <SelectItem value="Controller">Controller</SelectItem>
+                <SelectItem value="Other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-green-600"
+              onClick={handleSave}
+            >
+              <Check className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-red-600"
+              onClick={handleCancel}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-2">
+            <Badge
+              variant={
+                device.category === "Switch" 
+                  ? "default" 
+                  : device.category === "Router" 
+                    ? "secondary" 
+                    : device.category === "AP" 
+                      ? "outline" 
+                      : "destructive"
               }
-            }}
-            autoFocus
-          />
-        ) : (
-          <span
-            className="cursor-pointer hover:text-primary"
-            onClick={() => setEditingId(`${device.id}-hostname`)}
-          >
-            {device.hostname || "Click to add hostname"}
-          </span>
+            >
+              {device.category}
+            </Badge>
+            {device.needsVerification && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground"
+                onClick={() => handleEdit("category", device.category)}
+              >
+                <Edit2 className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
         )}
       </TableCell>
+      
       <TableCell>
-        {editingId === `${device.id}-make` ? (
-          <Select
-            defaultValue={device.make}
-            onValueChange={(value) => handleSaveEdit(device.id, "make", value)}
-          >
-            <SelectTrigger className="h-8">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Cisco">Cisco</SelectItem>
-              <SelectItem value="Juniper">Juniper</SelectItem>
-              <SelectItem value="Aruba">Aruba</SelectItem>
-              <SelectItem value="HPE">HPE</SelectItem>
-              <SelectItem value="Other">Other</SelectItem>
-            </SelectContent>
-          </Select>
-        ) : (
-          <span
-            className="cursor-pointer hover:text-primary"
-            onClick={() => setEditingId(`${device.id}-make`)}
-          >
-            {device.make || "Click to add make"}
-          </span>
-        )}
-      </TableCell>
-      <TableCell>
-        {editingId === `${device.id}-model` ? (
-          <Input
-            defaultValue={device.model}
-            className="h-8"
-            onBlur={(e) => handleSaveEdit(device.id, "model", e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleSaveEdit(device.id, "model", (e.target as HTMLInputElement).value);
-              }
-            }}
-            autoFocus
-          />
-        ) : (
-          <span
-            className="cursor-pointer hover:text-primary"
-            onClick={() => setEditingId(`${device.id}-model`)}
-          >
-            {device.model || "Click to add model"}
-          </span>
-        )}
-      </TableCell>
-      <TableCell>
-        {editingId === `${device.id}-category` ? (
-          <Select
-            defaultValue={device.category}
-            onValueChange={(value) => handleSaveEdit(device.id, "category", value)}
-          >
-            <SelectTrigger className="h-8">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Switch">Switch</SelectItem>
-              <SelectItem value="AP">Access Point</SelectItem>
-              <SelectItem value="Controller">Controller</SelectItem>
-              <SelectItem value="Router">Router</SelectItem>
-              <SelectItem value="Other">Other</SelectItem>
-            </SelectContent>
-          </Select>
-        ) : (
-          <span
-            className="cursor-pointer hover:text-primary flex items-center gap-1.5"
-            onClick={() => setEditingId(`${device.id}-category`)}
-          >
-            {getDeviceIcon(device.category)}
-            {device.category}
-          </span>
-        )}
-      </TableCell>
-      <TableCell>
-        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-          device.status === 'online' 
-            ? 'bg-green-100 text-green-800' 
-            : device.status === 'offline'
-            ? 'bg-red-100 text-red-800'
-            : 'bg-yellow-100 text-yellow-800'
-        }`}>
+        <Badge
+          variant={
+            device.status === "online" 
+              ? "success" 
+              : device.status === "offline" 
+                ? "destructive" 
+                : "outline"
+          }
+        >
           {device.status}
-        </span>
+        </Badge>
       </TableCell>
-      <TableCell className="text-center">
-        {device.confirmed ? (
-          <CheckCircleIcon className="h-5 w-5 text-green-500 mx-auto" />
-        ) : (
-          <AlertCircleIcon className="h-5 w-5 text-amber-500 mx-auto" />
-        )}
+      
+      <TableCell>
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete {isSwitch ? "Switch" : "Device"}</DialogTitle>
+              <DialogDescription>
+                {isSwitch 
+                  ? "This will delete the switch and all associated devices. This action cannot be undone."
+                  : "Are you sure you want to delete this device? This action cannot be undone."}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={() => {
+                  onDeleteDevice(device.id, isSwitch);
+                  setDeleteDialogOpen(false);
+                }}
+              >
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </TableCell>
     </TableRow>
   );
-};
-
-export default DeviceTableRow;
+}

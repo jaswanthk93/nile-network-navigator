@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address" }),
@@ -24,16 +25,46 @@ interface LoginFormProps {
 
 export function LoginForm({ onError }: LoginFormProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn, isAuthenticated } = useAuth();
+  const { signIn, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     // If already authenticated, redirect to home
     if (isAuthenticated) {
-      console.log("LoginForm: User is authenticated, redirecting to home page");
-      navigate('/', { replace: true });
+      console.log("LoginForm: User is authenticated, checking for existing sites");
+      checkForExistingSites();
     }
   }, [isAuthenticated, navigate]);
+  
+  const checkForExistingSites = async () => {
+    if (!user) return;
+    
+    try {
+      // Check if user has any existing sites
+      const { data: sites, error } = await supabase
+        .from('sites')
+        .select('*')
+        .eq('user_id', user.id);
+      
+      if (error) {
+        console.error("Error checking for existing sites:", error);
+        navigate('/', { replace: true });
+        return;
+      }
+      
+      if (sites && sites.length > 0) {
+        // Store site information in session storage for the welcome page
+        sessionStorage.setItem('existingSites', JSON.stringify(sites));
+        navigate('/', { replace: true });
+      } else {
+        // No existing sites, just go to home
+        navigate('/', { replace: true });
+      }
+    } catch (error) {
+      console.error("Error in site check:", error);
+      navigate('/', { replace: true });
+    }
+  };
   
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
