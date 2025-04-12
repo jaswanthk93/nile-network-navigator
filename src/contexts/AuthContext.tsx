@@ -4,13 +4,26 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 
+type RegisterData = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phoneNumber: string;
+  companyName: string;
+  password: string;
+};
+
 type AuthContextType = {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  isLoading: boolean; // Added for compatibility
+  isAuthenticated: boolean; // Added for compatibility
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  logout: () => Promise<void>; // Added for UserNav.tsx
+  register: (data: RegisterData) => Promise<{ error: Error | null }>; // Added for RegisterForm.tsx
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,6 +33,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+
+  // Compute derived state
+  const isAuthenticated = !!user;
+  const isLoading = loading;
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -97,15 +114,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await supabase.auth.signOut();
   };
 
+  // Added for UserNav.tsx
+  const logout = async () => {
+    await signOut();
+  };
+
+  // Added for RegisterForm.tsx
+  const register = async (data: RegisterData) => {
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: {
+          data: {
+            first_name: data.firstName,
+            last_name: data.lastName,
+            phone_number: data.phoneNumber,
+            company_name: data.companyName,
+          },
+          emailRedirectTo: window.location.origin,
+        },
+      });
+      
+      if (!error) {
+        navigate('/');
+      }
+      
+      return { error };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
         user,
         session,
         loading,
+        isLoading,
+        isAuthenticated,
         signIn,
         signUp,
         signOut,
+        logout,
+        register,
       }}
     >
       {children}
