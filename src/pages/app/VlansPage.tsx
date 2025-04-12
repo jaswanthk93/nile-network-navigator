@@ -345,20 +345,45 @@ const VlansPage = () => {
     try {
       setLoading(true);
 
+      // Get the current site ID or create a default one if needed
+      let siteId = localStorage.getItem('currentSiteId');
+      
+      // If no site ID exists, we need to create a default site
+      if (!siteId) {
+        console.log("No site ID found in localStorage, creating a default site");
+        
+        const { data: newSite, error: siteError } = await supabase
+          .from('sites')
+          .insert({
+            name: 'Default Site',
+            user_id: user!.id
+          })
+          .select('id')
+          .single();
+          
+        if (siteError) {
+          throw new Error(`Error creating default site: ${siteError.message}`);
+        }
+        
+        siteId = newSite.id;
+        localStorage.setItem('currentSiteId', siteId);
+        console.log(`Created default site with ID: ${siteId}`);
+      }
+
       const vlansToSave = vlans.map(vlan => {
         const isNewVlan = vlan.id.startsWith('discovered-') || vlan.id.startsWith('new-');
         
         // Define the object type with an optional id property
         const vlanObject: {
           user_id: string;
-          site_id: string | null;
+          site_id: string;
           vlan_id: number;
           name: string;
           description: string;
           id?: string; // Make id optional so we can add it conditionally
         } = {
           user_id: user!.id,
-          site_id: localStorage.getItem('currentSiteId') || null,
+          site_id: siteId as string, // Use the siteId which is now guaranteed to exist
           vlan_id: vlan.vlanId,
           name: vlan.name,
           description: vlan.segmentName
