@@ -3,9 +3,14 @@ import { Outlet, Navigate } from "react-router-dom";
 import { Sidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import { Loader2 } from "lucide-react";
+import { useEffect } from "react";
 
 const AppLayout = () => {
   const { user, loading } = useAuth();
+
+  useEffect(() => {
+    console.log("AppLayout rendered:", { user, loading });
+  }, [user, loading]);
 
   if (loading) {
     return (
@@ -16,6 +21,7 @@ const AppLayout = () => {
   }
 
   if (!user) {
+    console.log("No user in AppLayout, redirecting to login");
     return <Navigate to="/login" replace />;
   }
 

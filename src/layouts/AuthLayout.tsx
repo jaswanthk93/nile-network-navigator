@@ -2,9 +2,14 @@
 import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Logo } from '@/components/Logo';
+import { useEffect } from 'react';
 
 const AuthLayout = () => {
   const { isAuthenticated, isLoading } = useAuth();
+
+  useEffect(() => {
+    console.log("AuthLayout rendered:", { isAuthenticated, isLoading });
+  }, [isAuthenticated, isLoading]);
 
   if (isLoading) {
     return (
@@ -15,6 +20,7 @@ const AuthLayout = () => {
   }
 
   if (isAuthenticated) {
+    console.log("User is authenticated in AuthLayout, redirecting to home");
     return <Navigate to="/" replace />;
   }
 
