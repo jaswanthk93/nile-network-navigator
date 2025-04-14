@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { 
@@ -250,7 +251,10 @@ export const SiteCard = ({
                     <span className="text-sm font-medium">{subsection.title}</span>
                     <span className="text-xs">{Math.round(subsection.progress)}%</span>
                   </div>
-                  <Progress value={subsection.progress} className="h-1.5" />
+                  <Progress 
+                    value={subsection.progress} 
+                    className="h-1.5" 
+                  />
                   <div className="flex justify-between items-center">
                     <p className="text-xs text-muted-foreground">{subsection.description}</p>
                     <Button 
