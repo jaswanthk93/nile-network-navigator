@@ -46,13 +46,9 @@ const AppLayout = () => {
           <SidebarHeader className="flex items-center justify-between px-4 py-2">
             <Logo />
           </SidebarHeader>
-          <SidebarContent>
+          <SidebarContent className="flex-grow overflow-visible">
             <SidebarGroup>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SiteNavigation />
-                </SidebarMenuItem>
-              </SidebarMenu>
+              <SiteNavigation />
             </SidebarGroup>
           </SidebarContent>
           <SidebarFooter className="p-4">
@@ -69,7 +65,7 @@ const AppLayout = () => {
             </div>
           </SidebarFooter>
         </Sidebar>
-        <main className="flex-1 p-6 md:p-8">
+        <main className="flex-1 p-6 md:p-8 overflow-auto">
           <Outlet />
         </main>
       </div>

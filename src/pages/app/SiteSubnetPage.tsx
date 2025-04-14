@@ -75,6 +75,18 @@ const SiteSubnetPage = () => {
   const [siteAdded, setSiteAdded] = useState(false);
   const [currentSiteId, setCurrentSiteId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    location: '',
+    subnet: '',
+    accessMethod: 'snmp',
+    snmpCommunity: 'public',
+    snmpVersion: 'v2c',
+    username: '',
+    password: ''
+  });
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -189,6 +201,28 @@ const SiteSubnetPage = () => {
     
     loadExistingData();
   }, [user, toast, siteForm]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const siteIdFromUrl = params.get('site');
+    
+    if (siteIdFromUrl) {
+      setSelectedSiteId(siteIdFromUrl);
+    } else {
+      setFormData({
+        name: '',
+        description: '',
+        location: '',
+        subnet: '',
+        accessMethod: 'snmp',
+        snmpCommunity: 'public',
+        snmpVersion: 'v2c',
+        username: '',
+        password: ''
+      });
+      setSelectedSiteId(null);
+    }
+  }, [user, supabase]);
 
   const onSiteSubmit = async (values: SiteFormValues) => {
     if (!user) {
