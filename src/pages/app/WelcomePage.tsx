@@ -16,11 +16,18 @@ import {
   Server, 
   Layers, 
   FileDown,
-  Plus
+  Plus,
+  Radio,
+  Check,
+  FileSpreadsheet,
+  MacIcon,
+  MacAddressIcon
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { SiteCard } from "@/components/welcome/SiteCard";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
+import { MacAddressIcon } from "@/components/MacAddressIcon";
 
 interface Site {
   id: string;
@@ -344,6 +351,154 @@ const WelcomePage = () => {
           </Card>
         </div>
       )}
+
+      <div className="space-y-4 pt-6">
+        <Separator />
+        <h2 className="text-2xl font-semibold">Migration Process Overview</h2>
+        <p className="text-muted-foreground">
+          Follow these steps to successfully migrate your network to Nile:
+        </p>
+
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <Card className="border-l-4 border-l-blue-500">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Network className="h-5 w-5 text-blue-500" />
+                Step 1: Site & Subnet Setup
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm">
+                Provide essential details about your network site and define the IP
+                subnets that will be scanned during discovery.
+              </p>
+            </CardContent>
+            <CardFooter>
+              <Link to="/site-subnet" className="w-full">
+                <Button variant="outline" size="sm" className="w-full">
+                  Go to Site Setup
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </CardFooter>
+          </Card>
+
+          <Card className="border-l-4 border-l-indigo-500">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Radio className="h-5 w-5 text-indigo-500" />
+                Step 2: Network Discovery
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm">
+                Automatically scan your network to identify and catalog switches, routers,
+                and other devices using SNMP, SSH, or Telnet protocols.
+              </p>
+            </CardContent>
+            <CardFooter>
+              <Link to="/discovery" className="w-full">
+                <Button variant="outline" size="sm" className="w-full">
+                  Go to Discovery
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </CardFooter>
+          </Card>
+
+          <Card className="border-l-4 border-l-purple-500">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Server className="h-5 w-5 text-purple-500" />
+                Step 3: Device Verification
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm">
+                Review and verify the discovered network devices, confirm their roles,
+                and ensure all essential equipment is properly cataloged.
+              </p>
+            </CardContent>
+            <CardFooter>
+              <Link to="/devices" className="w-full">
+                <Button variant="outline" size="sm" className="w-full">
+                  Go to Devices
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </CardFooter>
+          </Card>
+
+          <Card className="border-l-4 border-l-green-500">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Layers className="h-5 w-5 text-green-500" />
+                Step 4: VLAN Management
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm">
+                Map and configure your VLANs, defining their purpose and ensuring
+                proper documentation for the migration process.
+              </p>
+            </CardContent>
+            <CardFooter>
+              <Link to="/vlans" className="w-full">
+                <Button variant="outline" size="sm" className="w-full">
+                  Go to VLANs
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </CardFooter>
+          </Card>
+
+          <Card className="border-l-4 border-l-yellow-500">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <MacAddressIcon className="h-5 w-5 text-yellow-500" />
+                Step 5: MAC Addresses
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm">
+                Collect and organize MAC addresses from your network devices to ensure
+                smooth transition of network-level access controls.
+              </p>
+            </CardContent>
+            <CardFooter>
+              <Link to="/mac-addresses" className="w-full">
+                <Button variant="outline" size="sm" className="w-full">
+                  Go to MAC Addresses
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </CardFooter>
+          </Card>
+
+          <Card className="border-l-4 border-l-red-500">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <FileDown className="h-5 w-5 text-red-500" />
+                Step 6: Export Migration
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm">
+                Generate migration files compatible with Nile's platform, containing all the
+                network information needed for a seamless transition.
+              </p>
+            </CardContent>
+            <CardFooter>
+              <Link to="/export" className="w-full">
+                <Button variant="outline" size="sm" className="w-full">
+                  Go to Export
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </CardFooter>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 };
