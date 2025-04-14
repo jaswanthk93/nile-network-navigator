@@ -108,7 +108,7 @@ const SiteSubnetPage = () => {
 
   // Handle new site creation flag
   useEffect(() => {
-    // Check URL parameters
+    // Check URL parameters and localStorage
     const params = new URLSearchParams(location.search);
     const hasNewParam = params.has('new');
     const newSiteFlag = localStorage.getItem('creatingNewSite');
@@ -117,13 +117,13 @@ const SiteSubnetPage = () => {
     console.log("URL has new param:", hasNewParam);
     
     const shouldCreateNewSite = hasNewParam || newSiteFlag === 'true';
+    setIsCreatingNewSite(shouldCreateNewSite);
     
     if (shouldCreateNewSite) {
       console.log("Creating new site, resetting everything");
       
-      // Clear all storage
-      sessionStorage.clear();
-      localStorage.clear();
+      // Clean up selected site ID
+      sessionStorage.removeItem('selectedSiteId');
       
       // Reset form values
       siteForm.reset({
@@ -146,12 +146,7 @@ const SiteSubnetPage = () => {
       setSubnets([]);
       setSiteAdded(false);
       setCurrentSiteId(null);
-      
-      // Remove the flag after processing
-      localStorage.removeItem('creatingNewSite');
     }
-    
-    setIsCreatingNewSite(shouldCreateNewSite);
     
   }, [location.search, siteForm, subnetForm]);
 
@@ -598,9 +593,15 @@ const SiteSubnetPage = () => {
   return (
     <div className="container mx-auto max-w-4xl space-y-8">
       <div className="flex flex-col space-y-2">
-        <h1 className="text-2xl font-bold tracking-tight">Site & Subnet Configuration</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {isCreatingNewSite 
+            ? "Create New Site" 
+            : "Site & Subnet Configuration"}
+        </h1>
         <p className="text-muted-foreground">
-          Define your network site and management subnets for discovery.
+          {isCreatingNewSite
+            ? "Begin by creating a new network site for migration"
+            : "Define your network site and management subnets for discovery."}
         </p>
       </div>
 

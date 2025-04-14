@@ -23,6 +23,21 @@ export function SiteNavigation() {
   const [openSiteId, setOpenSiteId] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const [isCreatingNewSite, setIsCreatingNewSite] = useState(false);
+
+  // Check if creating a new site
+  useEffect(() => {
+    const creatingNewSite = localStorage.getItem('creatingNewSite') === 'true';
+    const params = new URLSearchParams(location.search);
+    const hasNewParam = params.has('new');
+    
+    setIsCreatingNewSite(creatingNewSite || hasNewParam);
+    
+    if (creatingNewSite || hasNewParam) {
+      // If creating a new site, close any open site
+      setOpenSiteId(null);
+    }
+  }, [location.search]);
 
   // Fetch sites when component mounts or user changes
   useEffect(() => {
@@ -40,8 +55,8 @@ export function SiteNavigation() {
         if (error) throw error;
         setSites(data || []);
         
-        // If we have sites and no site is selected, auto-select the most recent one
-        if (data?.length > 0 && !sessionStorage.getItem('selectedSiteId')) {
+        // Only auto-select a site if we're not in new site creation mode
+        if (data?.length > 0 && !isCreatingNewSite && !sessionStorage.getItem('selectedSiteId')) {
           sessionStorage.setItem('selectedSiteId', data[0].id);
         }
       } catch (error) {
@@ -52,20 +67,23 @@ export function SiteNavigation() {
     }
     
     fetchSites();
-  }, [user]);
+  }, [user, isCreatingNewSite]);
 
   // Track if we're in new site creation mode
   useEffect(() => {
+    // Don't select a site if we're creating a new one
+    if (isCreatingNewSite) {
+      setOpenSiteId(null);
+      return;
+    }
+    
     // Get current site ID from session storage
     const currentSiteId = sessionStorage.getItem('selectedSiteId');
     
-    // Check if we're in a new site creation flow
-    const creatingNewSite = localStorage.getItem('creatingNewSite') === 'true';
-    
-    if (!creatingNewSite && currentSiteId) {
+    if (currentSiteId) {
       setOpenSiteId(currentSiteId);
     }
-  }, [location.pathname]);
+  }, [location.pathname, isCreatingNewSite]);
 
   const handleCreateNewSite = () => {
     console.log("Creating new site - clearing data and navigating to site creation");
@@ -78,12 +96,14 @@ export function SiteNavigation() {
       sessionStorage.setItem('supabase.auth.token', authData);
     }
     
-    // Only clear relevant data in localStorage
-    localStorage.removeItem('creatingNewSite');
+    // Clear site selection and set creation flag
+    sessionStorage.removeItem('selectedSiteId');
     localStorage.removeItem('selectedSiteId');
-    
-    // Set new site creation flag
     localStorage.setItem('creatingNewSite', 'true');
+    
+    // Reset open site ID to prevent showing expanded sites
+    setOpenSiteId(null);
+    setIsCreatingNewSite(true);
     
     // Use navigate instead of window.location.href to prevent losing auth state
     navigate(`/site-subnet?new=${Date.now()}`);
@@ -95,6 +115,11 @@ export function SiteNavigation() {
   };
 
   const handleSiteSelect = (siteId: string) => {
+    // Don't allow site selection when creating a new site
+    if (isCreatingNewSite) {
+      return;
+    }
+    
     console.log(`Site selected: ${siteId}`);
     
     // Toggle site expansion in UI
@@ -102,6 +127,7 @@ export function SiteNavigation() {
     
     // Clear new site creation flag if it exists
     localStorage.removeItem('creatingNewSite');
+    setIsCreatingNewSite(false);
     
     // Store the selected site ID
     sessionStorage.setItem('selectedSiteId', siteId);
@@ -131,6 +157,32 @@ export function SiteNavigation() {
       </Link>
     );
   };
+
+  // If creating a new site, don't show existing sites
+  if (isCreatingNewSite) {
+    return (
+      <div className="w-full space-y-2">
+        <NavLink to="/" className="flex items-center gap-2 px-3 py-2 w-full rounded-md">
+          <Home className="h-5 w-5" />
+          <span>Welcome</span>
+        </NavLink>
+        
+        <div className="px-3 text-sm font-medium text-muted-foreground">
+          Sites
+        </div>
+
+        <div className="space-y-1">
+          <button
+            onClick={handleCreateNewSite}
+            className="flex items-center gap-2 px-3 py-2 w-full text-left rounded-md bg-accent/50 text-sm font-medium"
+          >
+            <Plus className="h-4 w-4 text-primary" />
+            <span>Creating New Site Migration...</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-2">
