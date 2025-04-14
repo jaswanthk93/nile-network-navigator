@@ -208,19 +208,8 @@ export const SiteCard = ({
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
-          <CardTitle className="line-clamp-1 flex items-center justify-between">
+          <CardTitle className="line-clamp-1">
             <span>{name}</span>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-6 w-6 ml-2 text-muted-foreground"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsExpanded(!isExpanded);
-              }}
-            >
-              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
           </CardTitle>
           {location && (
             <p className="text-sm text-muted-foreground line-clamp-1">
@@ -239,7 +228,21 @@ export const SiteCard = ({
               <span>Migration Progress</span>
               <span>{status.progress}%</span>
             </div>
-            <Progress value={status.progress} className="h-2" />
+            <div className="flex items-center gap-2">
+              <Progress value={status.progress} className="h-2 flex-1" />
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-6 w-6 shrink-0 text-muted-foreground"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsExpanded(!isExpanded);
+                }}
+                aria-label={isExpanded ? "Collapse details" : "Expand details"}
+              >
+                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground">{status.label}</p>
           </div>
           
