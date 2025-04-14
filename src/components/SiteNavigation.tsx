@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,6 +24,7 @@ export function SiteNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Fetch sites when component mounts or user changes
   useEffect(() => {
     async function fetchSites() {
       if (!user) return;
@@ -37,6 +39,11 @@ export function SiteNavigation() {
           
         if (error) throw error;
         setSites(data || []);
+        
+        // If we have sites and no site is selected, auto-select the most recent one
+        if (data?.length > 0 && !sessionStorage.getItem('selectedSiteId')) {
+          sessionStorage.setItem('selectedSiteId', data[0].id);
+        }
       } catch (error) {
         console.error('Error fetching sites:', error);
       } finally {
@@ -47,15 +54,30 @@ export function SiteNavigation() {
     fetchSites();
   }, [user]);
 
+  // Track if we're in new site creation mode
+  useEffect(() => {
+    // Get current site ID from session storage
+    const currentSiteId = sessionStorage.getItem('selectedSiteId');
+    
+    // Check if we're in a new site creation flow
+    const creatingNewSite = localStorage.getItem('creatingNewSite') === 'true';
+    
+    if (!creatingNewSite && currentSiteId) {
+      setOpenSiteId(currentSiteId);
+    }
+  }, [location.pathname]);
+
   const handleCreateNewSite = () => {
-    // Clear ALL cached data - more thorough cleanup
+    console.log("Creating new site - clearing data and navigating to site creation");
+    
+    // Remove all site data from storage
     sessionStorage.clear();
     localStorage.clear();
     
-    // Set flag to indicate a fresh site creation
+    // Set new site creation flag
     localStorage.setItem('creatingNewSite', 'true');
     
-    // Force a full page reload by using window.location instead of navigate
+    // Force a complete page reload to reset React state
     window.location.href = `/site-subnet?new=${Date.now()}`;
     
     toast({
@@ -66,12 +88,22 @@ export function SiteNavigation() {
 
   const handleSiteSelect = (siteId: string) => {
     console.log(`Site selected: ${siteId}`);
-    // Toggle site expansion
+    
+    // Toggle site expansion in UI
     setOpenSiteId(openSiteId === siteId ? null : siteId);
-    // Remove new site creation flag if it exists
+    
+    // Clear new site creation flag if it exists
     localStorage.removeItem('creatingNewSite');
+    
     // Store the selected site ID
     sessionStorage.setItem('selectedSiteId', siteId);
+    
+    // If we're not on a site-related page, navigate to the site subnet page
+    if (!location.pathname.includes('site-') && !location.pathname.includes('discovery') && 
+        !location.pathname.includes('devices') && !location.pathname.includes('vlans') &&
+        !location.pathname.includes('mac-addresses') && !location.pathname.includes('export')) {
+      navigate(`/site-subnet?site=${siteId}`);
+    }
   };
 
   const SiteLink = ({ siteId, to, icon: Icon, children }: { siteId: string, to: string, icon: React.ElementType, children: React.ReactNode }) => {
