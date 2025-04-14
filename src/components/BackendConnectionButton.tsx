@@ -8,6 +8,8 @@ import { checkBackendConnection, getConnectionErrorExplanation } from "@/utils/b
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { BackendLogViewer } from "@/components/BackendLogViewer";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 
 export function BackendConnectionButton() {
   const [isChecking, setIsChecking] = useState(false);
@@ -60,87 +62,85 @@ export function BackendConnectionButton() {
   };
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={checkConnection} 
-            disabled={isChecking}
-            className={status?.connected ? "text-green-500" : status ? "text-red-500" : ""}
-          >
-            {isChecking ? (
-              <LoaderCircleIcon className="h-4 w-4 animate-spin" />
-            ) : (
-              <PlugIcon className="h-4 w-4" />
-            )}
-            <span className="sr-only">Check backend connection</span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <div className="space-y-1">
-            <p>
-              {isChecking 
-                ? "Checking backend connection..." 
-                : status 
-                  ? status.connected 
-                    ? status.message 
-                    : "Backend not connected"
-                  : "Check backend connection"}
+    <HoverCard openDelay={200} closeDelay={300}>
+      <HoverCardTrigger asChild>
+        <Button 
+          variant="outline" 
+          size="icon" 
+          onClick={checkConnection} 
+          disabled={isChecking}
+          className={status?.connected ? "text-green-500" : status ? "text-red-500" : ""}
+        >
+          {isChecking ? (
+            <LoaderCircleIcon className="h-4 w-4 animate-spin" />
+          ) : (
+            <PlugIcon className="h-4 w-4" />
+          )}
+          <span className="sr-only">Check backend connection</span>
+        </Button>
+      </HoverCardTrigger>
+      <HoverCardContent className="w-80" align="end">
+        <div className="space-y-1">
+          <p>
+            {isChecking 
+              ? "Checking backend connection..." 
+              : status 
+                ? status.connected 
+                  ? status.message 
+                  : "Backend not connected"
+                : "Check backend connection"}
+          </p>
+          {status && !status.connected && status.errorType && (
+            <p className="text-xs text-muted-foreground">
+              {getConnectionErrorExplanation(status.errorType)}
             </p>
-            {status && !status.connected && status.errorType && (
-              <p className="text-xs text-muted-foreground">
-                {getConnectionErrorExplanation(status.errorType)}
-              </p>
-            )}
-            {status?.lastChecked && (
-              <p className="text-xs text-muted-foreground">
-                Last checked: {status.lastChecked.toLocaleTimeString()}
-              </p>
-            )}
-            <div className="pt-2">
-              <Dialog open={openLogs} onOpenChange={setOpenLogs}>
-                <DialogTrigger asChild>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="w-full flex gap-2 items-center"
-                  >
-                    <FileTextIcon className="h-3 w-3" />
-                    View Logs
-                  </Button>
-                </DialogTrigger>
-                <DialogContent 
-                  className="sm:max-w-[700px] max-h-[80vh]"
-                  onClick={handleDialogContentClick}
-                  onPointerDownOutside={(e) => {
-                    // Prevent closing when clicking inside the content
-                    if (e.target instanceof Element && 
-                        e.target.closest('.scroll-area-logs')) {
-                      e.preventDefault();
-                    }
-                  }}
-                  onInteractOutside={(e) => {
-                    // Prevent closing dialog when interacting with content
-                    if (e.target instanceof Element && 
-                        e.target.closest('.scroll-area-logs')) {
-                      e.preventDefault();
-                    }
-                  }}
+          )}
+          {status?.lastChecked && (
+            <p className="text-xs text-muted-foreground">
+              Last checked: {status.lastChecked.toLocaleTimeString()}
+            </p>
+          )}
+          <div className="pt-2">
+            <Dialog open={openLogs} onOpenChange={setOpenLogs}>
+              <DialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full flex gap-2 items-center"
                 >
-                  <DialogHeader>
-                    <DialogTitle>Backend Connection Logs</DialogTitle>
-                  </DialogHeader>
-                  <ScrollArea className="h-[500px] rounded-md border p-4 scroll-area-logs">
-                    <BackendLogViewer />
-                  </ScrollArea>
-                </DialogContent>
-              </Dialog>
-            </div>
+                  <FileTextIcon className="h-3 w-3" />
+                  View Logs
+                </Button>
+              </DialogTrigger>
+              <DialogContent 
+                className="sm:max-w-[700px] max-h-[80vh]"
+                onClick={handleDialogContentClick}
+                onPointerDownOutside={(e) => {
+                  // Prevent closing when clicking inside the content
+                  if (e.target instanceof Element && 
+                      e.target.closest('.scroll-area-logs')) {
+                    e.preventDefault();
+                  }
+                }}
+                onInteractOutside={(e) => {
+                  // Prevent closing dialog when interacting with content
+                  if (e.target instanceof Element && 
+                      e.target.closest('.scroll-area-logs')) {
+                    e.preventDefault();
+                  }
+                }}
+              >
+                <DialogHeader>
+                  <DialogTitle>Backend Connection Logs</DialogTitle>
+                </DialogHeader>
+                <ScrollArea className="h-[500px] rounded-md border p-4 scroll-area-logs">
+                  <BackendLogViewer />
+                </ScrollArea>
+              </DialogContent>
+            </Dialog>
           </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+        </div>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
