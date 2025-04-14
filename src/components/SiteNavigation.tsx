@@ -66,13 +66,10 @@ export function SiteNavigation() {
       }
     }
     
-    // Only fetch sites if we're not creating a new site
-    if (!isCreatingNewSite) {
-      fetchSites();
-    } else {
-      setIsLoading(false);
-    }
-  }, [user, isCreatingNewSite]);
+    // Always fetch the list of sites, even when creating a new one
+    // This ensures the sidebar shows all existing sites
+    fetchSites();
+  }, [user, location.pathname]);
 
   // Track if we're in new site creation mode
   useEffect(() => {
@@ -93,16 +90,15 @@ export function SiteNavigation() {
   const handleCreateNewSite = () => {
     console.log("Creating new site - clearing data and navigating to site creation");
     
-    // Preserve authentication data
-    const authToken = sessionStorage.getItem('supabase.auth.token');
-    
-    // Clear all site-related data
-    sessionStorage.removeItem('selectedSiteId');
-    sessionStorage.removeItem('subnetIds');
-    localStorage.removeItem('selectedSiteId');
+    // Don't clear the site list when creating a new site
+    // Just set creation flag and navigate
     
     // Set creation flag
     localStorage.setItem('creatingNewSite', 'true');
+    
+    // Clear form-related data
+    sessionStorage.removeItem('selectedSiteId');
+    sessionStorage.removeItem('subnetIds');
     
     // Reset UI state
     setOpenSiteId(null);
@@ -162,32 +158,7 @@ export function SiteNavigation() {
     );
   };
 
-  // If creating a new site, don't show existing sites
-  if (isCreatingNewSite) {
-    return (
-      <div className="w-full space-y-2">
-        <NavLink to="/" className="flex items-center gap-2 px-3 py-2 w-full rounded-md">
-          <Home className="h-5 w-5" />
-          <span>Welcome</span>
-        </NavLink>
-        
-        <div className="px-3 text-sm font-medium text-muted-foreground">
-          Sites
-        </div>
-
-        <div className="space-y-1">
-          <button
-            onClick={handleCreateNewSite}
-            className="flex items-center gap-2 px-3 py-2 w-full text-left rounded-md bg-accent/50 text-sm font-medium"
-          >
-            <Plus className="h-4 w-4 text-primary" />
-            <span>Creating New Site Migration...</span>
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // If creating a new site, still show existing sites but highlight the "Creating New Site" button
   return (
     <div className="w-full space-y-2">
       <NavLink to="/" className="flex items-center gap-2 px-3 py-2 w-full rounded-md">
@@ -202,10 +173,13 @@ export function SiteNavigation() {
       <div className="space-y-1">
         <button
           onClick={handleCreateNewSite}
-          className="flex items-center gap-2 px-3 py-2 w-full text-left rounded-md hover:bg-accent text-sm"
+          className={cn(
+            "flex items-center gap-2 px-3 py-2 w-full text-left rounded-md text-sm",
+            isCreatingNewSite ? "bg-accent/50 font-medium" : "hover:bg-accent"
+          )}
         >
-          <Plus className="h-4 w-4 text-primary" />
-          <span>Create New Site Migration</span>
+          <Plus className={cn("h-4 w-4", isCreatingNewSite ? "text-primary" : "")} />
+          <span>{isCreatingNewSite ? "Creating New Site Migration..." : "Create New Site Migration"}</span>
         </button>
         
         {isLoading ? (

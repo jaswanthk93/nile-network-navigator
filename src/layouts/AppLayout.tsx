@@ -48,8 +48,8 @@ const AppLayout = () => {
   }
 
   const handleSignOut = () => {
-    // Clean up site-related data first
-    localStorage.removeItem('creatingNewSite');
+    // Don't remove the 'creatingNewSite' flag during sign out
+    // This was causing issues with site creation
     sessionStorage.removeItem('selectedSiteId');
     sessionStorage.removeItem('subnetIds');
     

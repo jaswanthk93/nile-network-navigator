@@ -125,7 +125,7 @@ const SiteSubnetPage = () => {
       // Clean up selected site ID
       sessionStorage.removeItem('selectedSiteId');
       
-      // Reset form values
+      // Reset form values - CRITICAL for new site creation
       siteForm.reset({
         siteName: "",
         address: "",
