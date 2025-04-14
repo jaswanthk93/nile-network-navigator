@@ -11,22 +11,13 @@ import {
   SidebarMenuButton 
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
-import { 
-  Loader2, 
-  Home, 
-  Network, 
-  Server, 
-  Layers, 
-  Radio, 
-  FileDown, 
-  LogOut 
-} from "lucide-react";
+import { Loader2, LogOut } from "lucide-react";
 import { useEffect } from "react";
-import { Link, Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet } from "react-router-dom";
 import { UserNav } from "@/components/UserNav";
 import { Logo } from "@/components/Logo";
 import { BackendConnectionButton } from "@/components/BackendConnectionButton";
-import { MacAddressIcon } from "@/components/MacAddressIcon";
+import { SiteNavigation } from "@/components/SiteNavigation";
 
 const AppLayout = () => {
   const { user, loading, signOut } = useAuth();
@@ -59,60 +50,7 @@ const AppLayout = () => {
             <SidebarGroup>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Welcome">
-                    <Link to="/">
-                      <Home className="h-5 w-5" />
-                      <span>Welcome</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Site & Subnet">
-                    <Link to="/site-subnet">
-                      <Network className="h-5 w-5" />
-                      <span>Site & Subnet</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Discovery">
-                    <Link to="/discovery">
-                      <Radio className="h-5 w-5" />
-                      <span>Discovery</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Network Elements">
-                    <Link to="/devices">
-                      <Server className="h-5 w-5" />
-                      <span>Network Elements</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="VLANs" isActive={window.location.pathname === "/vlans"}>
-                    <Link to="/vlans">
-                      <Layers className="h-5 w-5" />
-                      <span>VLANs</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="MAC Addresses">
-                    <Link to="/mac-addresses">
-                      <MacAddressIcon className="h-5 w-5" />
-                      <span>MAC Addresses</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Export">
-                    <Link to="/export">
-                      <FileDown className="h-5 w-5" />
-                      <span>Export</span>
-                    </Link>
-                  </SidebarMenuButton>
+                  <SiteNavigation />
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroup>
