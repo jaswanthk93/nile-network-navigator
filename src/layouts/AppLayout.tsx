@@ -1,3 +1,4 @@
+
 import { 
   Sidebar, 
   SidebarProvider, 
@@ -21,7 +22,7 @@ import {
   LogOut 
 } from "lucide-react";
 import { useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate, Outlet } from "react-router-dom";
 import { UserNav } from "@/components/UserNav";
 import { Logo } from "@/components/Logo";
 import { BackendConnectionButton } from "@/components/BackendConnectionButton";
