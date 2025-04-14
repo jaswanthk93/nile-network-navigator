@@ -117,6 +117,9 @@ const WelcomePage = () => {
                   progress = 85;
                   label = "VLAN configuration complete";
                   
+                  // For now, we'll skip the MAC addresses check since the table doesn't exist yet
+                  // When the mac_addresses table is created, this code can be uncommented
+                  /*
                   const { count: macCount, error: macError } = await supabase
                     .from('mac_addresses')
                     .select('*', { count: 'exact', head: true })
@@ -128,6 +131,11 @@ const WelcomePage = () => {
                     progress = 95;
                     label = "MAC address collection complete";
                   }
+                  */
+                  
+                  // For now, simply assume that after VLANs, the user is ready for export
+                  progress = 95;
+                  label = "Ready for export";
                 }
               }
             }
