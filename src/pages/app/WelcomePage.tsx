@@ -20,8 +20,6 @@ import {
   Radio,
   Check,
   FileSpreadsheet,
-  MacIcon,
-  MacAddressIcon
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { SiteCard } from "@/components/welcome/SiteCard";
