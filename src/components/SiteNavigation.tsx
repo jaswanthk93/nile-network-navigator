@@ -60,7 +60,7 @@ export function SiteNavigation() {
   }, [user]);
 
   const handleCreateNewSite = () => {
-    // Clear all cached site data
+    // First clear all cached site data
     sessionStorage.removeItem('selectedSiteId');
     localStorage.removeItem('currentSite');
     localStorage.removeItem('subnetIds');
