@@ -116,11 +116,12 @@ const SiteSubnetPage = () => {
     console.log("URL has new param:", hasNewParam);
     
     const shouldCreateNewSite = hasNewParam || newSiteFlag === 'true';
-    setIsCreatingNewSite(shouldCreateNewSite);
     
     if (shouldCreateNewSite) {
-      console.log("Creating new site, resetting form and state");
-      localStorage.removeItem('creatingNewSite');
+      console.log("Creating new site, resetting everything");
+      
+      sessionStorage.clear();
+      localStorage.clear();
       
       siteForm.reset({
         siteName: "",
@@ -141,8 +142,12 @@ const SiteSubnetPage = () => {
       setSubnets([]);
       setSiteAdded(false);
       setCurrentSiteId(null);
+      
+      localStorage.removeItem('creatingNewSite');
     }
-  }, [location.search]);
+    
+    setIsCreatingNewSite(shouldCreateNewSite);
+  }, [location.search, siteForm]);
 
   useEffect(() => {
     const loadExistingData = async () => {
