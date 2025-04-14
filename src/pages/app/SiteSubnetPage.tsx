@@ -146,6 +146,9 @@ const SiteSubnetPage = () => {
       setSubnets([]);
       setSiteAdded(false);
       setCurrentSiteId(null);
+      
+      // Set loading to false since we won't be loading data for a new site
+      setIsLoading(false);
     }
     
   }, [location.search, siteForm, subnetForm]);
@@ -336,6 +339,11 @@ const SiteSubnetPage = () => {
       });
       setSiteAdded(true);
       
+      // Clear "creating new site" flag now that we've successfully created it
+      localStorage.removeItem('creatingNewSite');
+      setIsCreatingNewSite(false);
+      
+      // Store the new site ID
       sessionStorage.setItem('selectedSiteId', data.id);
     } catch (error) {
       console.error("Error saving site:", error);

@@ -1,6 +1,5 @@
-
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { 
@@ -27,6 +26,7 @@ import { SiteCard } from "@/components/welcome/SiteCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { MacAddressIcon } from "@/components/MacAddressIcon";
+import { toast } from "@/components/ui/use-toast";
 
 interface Site {
   id: string;
@@ -45,6 +45,7 @@ interface SiteWithStatus extends Site {
 
 const WelcomePage = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [sites, setSites] = useState<SiteWithStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -161,6 +162,23 @@ const WelcomePage = () => {
     fetchSites();
   }, [user]);
 
+  const handleCreateNewSite = () => {
+    // Clear any existing site data
+    sessionStorage.removeItem('selectedSiteId');
+    sessionStorage.removeItem('subnetIds');
+    
+    // Set the creation flag
+    localStorage.setItem('creatingNewSite', 'true');
+    
+    // Navigate to site creation with a timestamp to force reload
+    navigate(`/site-subnet?new=${Date.now()}`);
+    
+    toast({
+      title: "Create new site",
+      description: "Starting fresh with a new site migration"
+    });
+  };
+
   const handleSiteDelete = () => {
     if (user) {
       const fetchSites = async () => {
@@ -255,12 +273,10 @@ const WelcomePage = () => {
                       Create a new site for network migration
                     </p>
                   </div>
-                  <Link to="/site-subnet">
-                    <Button>
-                      Create New Site
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </Link>
+                  <Button onClick={handleCreateNewSite}>
+                    Create New Site
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
                 </div>
               </Card>
             </div>
@@ -285,12 +301,10 @@ const WelcomePage = () => {
               </p>
             </CardContent>
             <CardFooter>
-              <Link to="/site-subnet" className="w-full">
-                <Button className="w-full">
-                  Get Started
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
+              <Button className="w-full" onClick={handleCreateNewSite}>
+                Get Started
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
             </CardFooter>
           </Card>
 

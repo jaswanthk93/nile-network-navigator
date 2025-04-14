@@ -66,7 +66,12 @@ export function SiteNavigation() {
       }
     }
     
-    fetchSites();
+    // Only fetch sites if we're not creating a new site
+    if (!isCreatingNewSite) {
+      fetchSites();
+    } else {
+      setIsLoading(false);
+    }
   }, [user, isCreatingNewSite]);
 
   // Track if we're in new site creation mode
@@ -88,25 +93,24 @@ export function SiteNavigation() {
   const handleCreateNewSite = () => {
     console.log("Creating new site - clearing data and navigating to site creation");
     
-    // Remove all site data from storage but preserve authentication data
-    // Don't clear sessionStorage entirely, as it might contain auth tokens
-    const authData = sessionStorage.getItem('supabase.auth.token');
-    sessionStorage.clear();
-    if (authData) {
-      sessionStorage.setItem('supabase.auth.token', authData);
-    }
+    // Preserve authentication data
+    const authToken = sessionStorage.getItem('supabase.auth.token');
     
-    // Clear site selection and set creation flag
+    // Clear all site-related data
     sessionStorage.removeItem('selectedSiteId');
+    sessionStorage.removeItem('subnetIds');
     localStorage.removeItem('selectedSiteId');
+    
+    // Set creation flag
     localStorage.setItem('creatingNewSite', 'true');
     
-    // Reset open site ID to prevent showing expanded sites
+    // Reset UI state
     setOpenSiteId(null);
     setIsCreatingNewSite(true);
     
-    // Use navigate instead of window.location.href to prevent losing auth state
-    navigate(`/site-subnet?new=${Date.now()}`);
+    // Use navigate with a unique timestamp to force component reloads
+    const timestamp = Date.now();
+    navigate(`/site-subnet?new=${timestamp}`);
     
     toast({
       title: "Create new site",
