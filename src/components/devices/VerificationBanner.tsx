@@ -3,20 +3,25 @@ import React from "react";
 import { AlertCircleIcon } from "lucide-react";
 
 interface VerificationBannerProps {
-  hasDevicesNeedingVerification: boolean;
+  count: number;
+  total: number;
 }
 
 const VerificationBanner: React.FC<VerificationBannerProps> = ({
-  hasDevicesNeedingVerification,
+  count,
+  total,
 }) => {
-  if (!hasDevicesNeedingVerification) {
-    return null;
-  }
-
   return (
-    <div className="mt-2 text-amber-600 text-sm flex items-center gap-2">
-      <AlertCircleIcon className="h-4 w-4" />
-      <span>Some devices need verification. Please review and confirm their details.</span>
+    <div className="bg-amber-50 border border-amber-200 px-4 py-3 rounded-md flex items-center gap-2">
+      <AlertCircleIcon className="h-5 w-5 text-amber-500" />
+      <div>
+        <p className="text-amber-800">
+          <span className="font-medium">{count} of {total} devices</span> need verification
+        </p>
+        <p className="text-amber-600 text-sm">
+          Please review and confirm device details before proceeding.
+        </p>
+      </div>
     </div>
   );
 };

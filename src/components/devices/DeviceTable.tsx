@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DeviceTableRow } from "./DeviceTableRow";
-import { DeviceFilter } from "./DeviceFilter";
+import DeviceFilter from "./DeviceFilter";
 
 interface DeviceTableProps {
   devices: any[];

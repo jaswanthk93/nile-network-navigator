@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeviceData } from "@/hooks/useDeviceData";
 import { DeviceTable } from "@/components/devices/DeviceTable";
-import { VerificationBanner } from "@/components/devices/VerificationBanner";
+import VerificationBanner from "@/components/devices/VerificationBanner";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Server, ArrowLeft, ArrowRight } from "lucide-react";

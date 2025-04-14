@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -264,7 +263,7 @@ export function DeviceTableRow({
         <Badge
           variant={
             device.status === "online" 
-              ? "success" 
+              ? "default" 
               : device.status === "offline" 
                 ? "destructive" 
                 : "outline"
