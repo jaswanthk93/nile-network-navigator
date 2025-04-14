@@ -1,18 +1,16 @@
 
 import React from "react";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SearchIcon } from "lucide-react";
 
 interface DeviceFilterProps {
   selectedCategory: string | null;
   onCategoryChange: (category: string) => void;
 }
 
-const DeviceFilter: React.FC<DeviceFilterProps> = ({
+const DeviceFilter = ({
   selectedCategory,
   onCategoryChange,
-}) => {
+}: DeviceFilterProps) => {
   return (
     <Select
       value={selectedCategory || "all"}
