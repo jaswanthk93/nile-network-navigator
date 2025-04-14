@@ -91,19 +91,28 @@ export const SiteCard = ({
         title: "VLAN Management",
         description: "Configure and manage VLANs",
         progress: status.progress < 75 ? 0 : 
-                 status.progress >= 90 ? 100 : 
-                 Math.min((status.progress - 75) * 6.7, 100),
+                 status.progress >= 85 ? 100 : 
+                 Math.min((status.progress - 75) * 10, 100),
         path: "/vlans",
         available: status.progress >= 75
       },
       {
+        title: "MAC Addresses",
+        description: "Collect and organize MAC addresses",
+        progress: status.progress < 85 ? 0 : 
+                 status.progress >= 95 ? 100 : 
+                 Math.min((status.progress - 85) * 10, 100),
+        path: "/mac-addresses",
+        available: status.progress >= 85
+      },
+      {
         title: "Export for Migration",
         description: "Generate migration files for Nile",
-        progress: status.progress < 90 ? 0 : 
+        progress: status.progress < 95 ? 0 : 
                  status.progress >= 100 ? 100 : 
-                 Math.min((status.progress - 90) * 10, 100),
+                 Math.min((status.progress - 95) * 20, 100),
         path: "/export",
-        available: status.progress >= 90
+        available: status.progress >= 95
       }
     ];
   };
@@ -116,8 +125,10 @@ export const SiteCard = ({
       navigate('/discovery');
     } else if (status.progress < 75) {
       navigate('/devices');
-    } else if (status.progress < 100) {
+    } else if (status.progress < 85) {
       navigate('/vlans');
+    } else if (status.progress < 95) {
+      navigate('/mac-addresses');
     } else {
       navigate('/export');
     }

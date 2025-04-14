@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -113,11 +114,20 @@ const WelcomePage = () => {
                 if (vlanError) throw vlanError;
                 
                 if (vlanCount && vlanCount > 0) {
-                  progress = 90;
+                  progress = 85;
                   label = "VLAN configuration complete";
                   
-                  progress = 95;
-                  label = "Ready for export";
+                  const { count: macCount, error: macError } = await supabase
+                    .from('mac_addresses')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('site_id', site.id);
+                    
+                  if (macError) throw macError;
+                  
+                  if (macCount && macCount > 0) {
+                    progress = 95;
+                    label = "MAC address collection complete";
+                  }
                 }
               }
             }
