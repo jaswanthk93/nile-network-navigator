@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { z } from "zod";
@@ -105,9 +106,9 @@ const SiteSubnetPage = () => {
 
   const accessMethod = subnetForm.watch("accessMethod");
 
+  // Handle new site creation flag
   useEffect(() => {
-    console.log("Checking for new site creation flag");
-    
+    // Check URL parameters
     const params = new URLSearchParams(location.search);
     const hasNewParam = params.has('new');
     const newSiteFlag = localStorage.getItem('creatingNewSite');
@@ -120,9 +121,11 @@ const SiteSubnetPage = () => {
     if (shouldCreateNewSite) {
       console.log("Creating new site, resetting everything");
       
+      // Clear all storage
       sessionStorage.clear();
       localStorage.clear();
       
+      // Reset form values
       siteForm.reset({
         siteName: "",
         address: "",
@@ -139,16 +142,20 @@ const SiteSubnetPage = () => {
         accessMethod: "snmp",
       });
       
+      // Reset component state
       setSubnets([]);
       setSiteAdded(false);
       setCurrentSiteId(null);
       
+      // Remove the flag after processing
       localStorage.removeItem('creatingNewSite');
     }
     
     setIsCreatingNewSite(shouldCreateNewSite);
-  }, [location.search, siteForm]);
+    
+  }, [location.search, siteForm, subnetForm]);
 
+  // Load existing site data
   useEffect(() => {
     const loadExistingData = async () => {
       if (!user) {

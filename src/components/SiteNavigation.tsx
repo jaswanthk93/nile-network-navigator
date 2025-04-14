@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -49,18 +48,16 @@ export function SiteNavigation() {
   }, [user]);
 
   const handleCreateNewSite = () => {
-    // Clear ALL cached site data
-    sessionStorage.removeItem('selectedSiteId');
-    localStorage.removeItem('currentSite');
-    localStorage.removeItem('subnetIds');
-    localStorage.removeItem('managementSubnets');
-    localStorage.removeItem('userSubnets');
+    // Clear ALL cached data - more thorough cleanup
+    sessionStorage.clear();
+    localStorage.clear();
     
-    // Set flag to indicate a fresh site creation and force a reload of the page
+    // Set flag to indicate a fresh site creation
     localStorage.setItem('creatingNewSite', 'true');
     
-    // Navigate to site creation page with a timestamp to force a reload
-    navigate(`/site-subnet?new=${Date.now()}`);
+    // Force a full page reload by using window.location instead of navigate
+    window.location.href = `/site-subnet?new=${Date.now()}`;
+    
     toast({
       title: "Create new site",
       description: "Starting fresh with a new site migration"

@@ -42,16 +42,16 @@ const AppLayout = () => {
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
-        <Sidebar className="max-h-screen">
-          <SidebarHeader className="flex items-center justify-between px-4 py-2">
+        <Sidebar className="flex flex-col h-screen">
+          <SidebarHeader className="flex items-center justify-between px-4 py-2 flex-shrink-0">
             <Logo />
           </SidebarHeader>
-          <SidebarContent className="flex flex-col overflow-hidden">
+          <SidebarContent className="flex flex-col flex-grow overflow-hidden">
             <SidebarGroup className="flex-grow overflow-y-auto overflow-x-hidden">
               <SiteNavigation />
             </SidebarGroup>
           </SidebarContent>
-          <SidebarFooter className="p-4">
+          <SidebarFooter className="p-4 flex-shrink-0">
             <div className="flex justify-between items-center">
               <UserNav />
               <BackendConnectionButton />
