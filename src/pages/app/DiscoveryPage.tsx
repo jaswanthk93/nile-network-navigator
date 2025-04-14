@@ -8,6 +8,7 @@ import { useDiscovery } from "@/hooks/useDiscovery";
 import BackendStatusIndicator from "@/components/discovery/BackendStatusIndicator";
 import DiscoveryProgress from "@/components/discovery/DiscoveryProgress";
 import DiscoveryActions from "@/components/discovery/DiscoveryActions";
+import { BackendConnectionButton } from "@/components/BackendConnectionButton";
 
 const DiscoveryPage: React.FC = () => {
   const navigate = useNavigate();
@@ -36,10 +37,13 @@ const DiscoveryPage: React.FC = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ScanSearchIcon className="h-5 w-5" />
-            Discovery Status
-          </CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle className="flex items-center gap-2">
+              <ScanSearchIcon className="h-5 w-5" />
+              Discovery Status
+            </CardTitle>
+            <BackendConnectionButton />
+          </div>
           <CardDescription>
             {discovery.status === "idle" 
               ? "Ready to scan your network for devices" 

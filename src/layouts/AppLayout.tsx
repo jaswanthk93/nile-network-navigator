@@ -26,6 +26,8 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { UserNav } from "@/components/UserNav";
 import { Logo } from "@/components/Logo";
+import { BackendConnectionButton } from "@/components/BackendConnectionButton";
+import { MacAddressIcon } from "@/components/MacAddressIcon";
 
 const AppLayout = () => {
   const { user, loading, signOut } = useAuth();
@@ -53,6 +55,7 @@ const AppLayout = () => {
         <Sidebar>
           <SidebarHeader className="flex items-center justify-between px-4 py-2">
             <Logo />
+            <BackendConnectionButton />
           </SidebarHeader>
           <SidebarContent>
             <SidebarGroup>
@@ -100,7 +103,7 @@ const AppLayout = () => {
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild tooltip="MAC Addresses">
                     <Link to="/mac-addresses">
-                      <Radio className="h-5 w-5" />
+                      <MacAddressIcon className="h-5 w-5" />
                       <span>MAC Addresses</span>
                     </Link>
                   </SidebarMenuButton>
