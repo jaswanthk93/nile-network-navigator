@@ -76,17 +76,7 @@ const SiteSubnetPage = () => {
   const [currentSiteId, setCurrentSiteId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    location: '',
-    subnet: '',
-    accessMethod: 'snmp',
-    snmpCommunity: 'public',
-    snmpVersion: 'v2c',
-    username: '',
-    password: ''
-  });
+  const [isCreatingNewSite, setIsCreatingNewSite] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -116,8 +106,42 @@ const SiteSubnetPage = () => {
   const accessMethod = subnetForm.watch("accessMethod");
 
   useEffect(() => {
+    const newSiteFlag = localStorage.getItem('creatingNewSite');
+    setIsCreatingNewSite(newSiteFlag === 'true');
+    
+    if (newSiteFlag === 'true') {
+      localStorage.removeItem('creatingNewSite');
+      
+      siteForm.reset({
+        siteName: "",
+        address: "",
+      });
+      
+      subnetForm.reset({
+        name: "",
+        subnet: "",
+        prefix: "24",
+        username: "",
+        password: "",
+        community: "public",
+        snmpVersion: "2c",
+        accessMethod: "snmp",
+      });
+      
+      setSubnets([]);
+      setSiteAdded(false);
+      setCurrentSiteId(null);
+    }
+  }, []);
+
+  useEffect(() => {
     const loadExistingData = async () => {
       if (!user) {
+        setIsLoading(false);
+        return;
+      }
+      
+      if (isCreatingNewSite) {
         setIsLoading(false);
         return;
       }
@@ -125,66 +149,136 @@ const SiteSubnetPage = () => {
       try {
         console.log("Loading site data for user:", user.id);
         
-        const { data: sites, error: sitesError } = await supabase
-          .from('sites')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(1);
+        const params = new URLSearchParams(window.location.search);
+        const siteIdFromUrl = params.get('site');
         
-        if (sitesError) {
-          console.error("Error loading sites:", sitesError);
-          toast({
-            title: "Error loading site data",
-            description: sitesError.message,
-            variant: "destructive",
-          });
-          setIsLoading(false);
-          return;
-        }
-        
-        console.log("Sites data loaded:", sites);
-        
-        if (sites && sites.length > 0) {
-          const site = sites[0];
-          setCurrentSiteId(site.id);
-          siteForm.setValue('siteName', site.name);
-          siteForm.setValue('address', site.location || '');
-          setSiteAdded(true);
-          
-          const { data: subnetData, error: subnetsError } = await supabase
-            .from('subnets')
+        if (siteIdFromUrl) {
+          console.log("Loading specific site:", siteIdFromUrl);
+          const { data: site, error: siteError } = await supabase
+            .from('sites')
             .select('*')
-            .eq('site_id', site.id)
-            .eq('user_id', user.id);
-          
-          if (subnetsError) {
-            console.error("Error loading subnets:", subnetsError);
+            .eq('id', siteIdFromUrl)
+            .eq('user_id', user.id)
+            .single();
+            
+          if (siteError) {
+            console.error("Error loading site:", siteError);
             toast({
-              title: "Error loading subnet data",
-              description: subnetsError.message,
+              title: "Error loading site data",
+              description: siteError.message,
               variant: "destructive",
             });
             setIsLoading(false);
             return;
           }
           
-          console.log("Subnets data loaded:", subnetData);
+          console.log("Site data loaded:", site);
           
-          if (subnetData && subnetData.length > 0) {
-            const loadedSubnets = subnetData.map(subnet => ({
-              id: subnet.id,
-              name: subnet.description || 'Subnet',
-              subnet: subnet.cidr.split('/')[0],
-              prefix: subnet.cidr.split('/')[1] || '24',
-              username: subnet.username || '',
-              password: subnet.password || '',
-              community: subnet.snmp_community || 'public',
-              snmpVersion: subnet.snmp_version as "1" | "2c" | "3" || '2c',
-              accessMethod: subnet.access_method as "ssh" | "telnet" | "snmp" || 'snmp'
-            }));
+          if (site) {
+            setCurrentSiteId(site.id);
+            siteForm.setValue('siteName', site.name);
+            siteForm.setValue('address', site.location || '');
+            setSiteAdded(true);
             
-            setSubnets(loadedSubnets);
+            const { data: subnetData, error: subnetsError } = await supabase
+              .from('subnets')
+              .select('*')
+              .eq('site_id', site.id)
+              .eq('user_id', user.id);
+            
+            if (subnetsError) {
+              console.error("Error loading subnets:", subnetsError);
+              toast({
+                title: "Error loading subnet data",
+                description: subnetsError.message,
+                variant: "destructive",
+              });
+              setIsLoading(false);
+              return;
+            }
+            
+            console.log("Subnets data loaded:", subnetData);
+            
+            if (subnetData && subnetData.length > 0) {
+              const loadedSubnets = subnetData.map(subnet => ({
+                id: subnet.id,
+                name: subnet.description || 'Subnet',
+                subnet: subnet.cidr.split('/')[0],
+                prefix: subnet.cidr.split('/')[1] || '24',
+                username: subnet.username || '',
+                password: subnet.password || '',
+                community: subnet.snmp_community || 'public',
+                snmpVersion: subnet.snmp_version as "1" | "2c" | "3" || '2c',
+                accessMethod: subnet.access_method as "ssh" | "telnet" | "snmp" || 'snmp'
+              }));
+              
+              setSubnets(loadedSubnets);
+            } else {
+              setSubnets([]);
+            }
+          }
+        } else {
+          const { data: sites, error: sitesError } = await supabase
+            .from('sites')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          if (sitesError) {
+            console.error("Error loading sites:", sitesError);
+            toast({
+              title: "Error loading site data",
+              description: sitesError.message,
+              variant: "destructive",
+            });
+            setIsLoading(false);
+            return;
+          }
+          
+          if (sites && sites.length > 0 && !isCreatingNewSite) {
+            const site = sites[0];
+            setCurrentSiteId(site.id);
+            siteForm.setValue('siteName', site.name);
+            siteForm.setValue('address', site.location || '');
+            setSiteAdded(true);
+            
+            const { data: subnetData, error: subnetsError } = await supabase
+              .from('subnets')
+              .select('*')
+              .eq('site_id', site.id)
+              .eq('user_id', user.id);
+            
+            if (subnetsError) {
+              console.error("Error loading subnets:", subnetsError);
+              toast({
+                title: "Error loading subnet data",
+                description: subnetsError.message,
+                variant: "destructive",
+              });
+              setIsLoading(false);
+              return;
+            }
+            
+            if (subnetData && subnetData.length > 0) {
+              const loadedSubnets = subnetData.map(subnet => ({
+                id: subnet.id,
+                name: subnet.description || 'Subnet',
+                subnet: subnet.cidr.split('/')[0],
+                prefix: subnet.cidr.split('/')[1] || '24',
+                username: subnet.username || '',
+                password: subnet.password || '',
+                community: subnet.snmp_community || 'public',
+                snmpVersion: subnet.snmp_version as "1" | "2c" | "3" || '2c',
+                accessMethod: subnet.access_method as "ssh" | "telnet" | "snmp" || 'snmp'
+              }));
+              
+              setSubnets(loadedSubnets);
+            }
+          } else {
+            setSubnets([]);
+            setSiteAdded(false);
+            setCurrentSiteId(null);
           }
         }
       } catch (error) {
@@ -200,29 +294,7 @@ const SiteSubnetPage = () => {
     };
     
     loadExistingData();
-  }, [user, toast, siteForm]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const siteIdFromUrl = params.get('site');
-    
-    if (siteIdFromUrl) {
-      setSelectedSiteId(siteIdFromUrl);
-    } else {
-      setFormData({
-        name: '',
-        description: '',
-        location: '',
-        subnet: '',
-        accessMethod: 'snmp',
-        snmpCommunity: 'public',
-        snmpVersion: 'v2c',
-        username: '',
-        password: ''
-      });
-      setSelectedSiteId(null);
-    }
-  }, [user, supabase]);
+  }, [user, toast, siteForm, isCreatingNewSite]);
 
   const onSiteSubmit = async (values: SiteFormValues) => {
     if (!user) {

@@ -63,8 +63,14 @@ export function SiteNavigation() {
   }, [user]);
 
   const handleCreateNewSite = () => {
-    // Clear any cached site data
+    // Clear all cached site data
     sessionStorage.removeItem('selectedSiteId');
+    localStorage.removeItem('currentSite');
+    localStorage.removeItem('subnetIds');
+    
+    // Set a flag to indicate a fresh site creation
+    localStorage.setItem('creatingNewSite', 'true');
+    
     // Navigate to site creation page
     navigate('/site-subnet');
     toast({
@@ -74,6 +80,9 @@ export function SiteNavigation() {
   };
 
   const handleSiteSelect = (siteId: string) => {
+    // Remove new site creation flag if it exists
+    localStorage.removeItem('creatingNewSite');
+    // Store the selected site ID
     sessionStorage.setItem('selectedSiteId', siteId);
   };
 
