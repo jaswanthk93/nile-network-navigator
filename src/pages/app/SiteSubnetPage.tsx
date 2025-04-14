@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -78,6 +78,7 @@ const SiteSubnetPage = () => {
   const [isCreatingNewSite, setIsCreatingNewSite] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
   const siteForm = useForm<SiteFormValues>({
@@ -106,12 +107,18 @@ const SiteSubnetPage = () => {
 
   useEffect(() => {
     console.log("Checking for new site creation flag");
+    
+    const params = new URLSearchParams(location.search);
+    const hasNewParam = params.has('new');
     const newSiteFlag = localStorage.getItem('creatingNewSite');
+    
     console.log("New site flag:", newSiteFlag);
+    console.log("URL has new param:", hasNewParam);
     
-    setIsCreatingNewSite(newSiteFlag === 'true');
+    const shouldCreateNewSite = hasNewParam || newSiteFlag === 'true';
+    setIsCreatingNewSite(shouldCreateNewSite);
     
-    if (newSiteFlag === 'true') {
+    if (shouldCreateNewSite) {
       console.log("Creating new site, resetting form and state");
       localStorage.removeItem('creatingNewSite');
       
@@ -135,7 +142,7 @@ const SiteSubnetPage = () => {
       setSiteAdded(false);
       setCurrentSiteId(null);
     }
-  }, []);
+  }, [location.search]);
 
   useEffect(() => {
     const loadExistingData = async () => {
@@ -289,7 +296,7 @@ const SiteSubnetPage = () => {
     };
     
     loadExistingData();
-  }, [user, toast, siteForm]);
+  }, [user, toast, siteForm, isCreatingNewSite]);
 
   const onSiteSubmit = async (values: SiteFormValues) => {
     if (!user) {

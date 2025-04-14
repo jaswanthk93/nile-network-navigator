@@ -46,7 +46,7 @@ const AppLayout = () => {
           <SidebarHeader className="flex items-center justify-between px-4 py-2">
             <Logo />
           </SidebarHeader>
-          <SidebarContent className="h-full flex flex-col overflow-y-auto">
+          <SidebarContent className="flex flex-col overflow-hidden">
             <SidebarGroup className="flex-grow overflow-y-auto overflow-x-hidden">
               <SiteNavigation />
             </SidebarGroup>

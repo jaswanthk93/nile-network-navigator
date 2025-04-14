@@ -3,20 +3,9 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { 
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuPortal
-} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Home, Network, Radio, Server, Layers, FileDown, Plus, ChevronRight, ChevronDown } from "lucide-react";
+import { Home, Network, Radio, Server, Layers, FileDown, Plus, ChevronRight } from "lucide-react";
 import { MacAddressIcon } from "@/components/MacAddressIcon";
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
@@ -60,18 +49,18 @@ export function SiteNavigation() {
   }, [user]);
 
   const handleCreateNewSite = () => {
-    // First clear all cached site data
+    // Clear ALL cached site data
     sessionStorage.removeItem('selectedSiteId');
     localStorage.removeItem('currentSite');
     localStorage.removeItem('subnetIds');
     localStorage.removeItem('managementSubnets');
     localStorage.removeItem('userSubnets');
     
-    // Set a flag to indicate a fresh site creation
+    // Set flag to indicate a fresh site creation and force a reload of the page
     localStorage.setItem('creatingNewSite', 'true');
     
-    // Navigate to site creation page
-    navigate('/site-subnet');
+    // Navigate to site creation page with a timestamp to force a reload
+    navigate(`/site-subnet?new=${Date.now()}`);
     toast({
       title: "Create new site",
       description: "Starting fresh with a new site migration"
