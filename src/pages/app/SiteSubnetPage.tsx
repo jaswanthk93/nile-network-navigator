@@ -106,7 +106,7 @@ const SiteSubnetPage = () => {
 
   const accessMethod = subnetForm.watch("accessMethod");
 
-  // Handle new site creation flag
+  // Handle new site creation flag - THIS IS THE CRITICAL SECTION
   useEffect(() => {
     // Check URL parameters and localStorage
     const params = new URLSearchParams(location.search);
@@ -125,7 +125,7 @@ const SiteSubnetPage = () => {
       // Clean up selected site ID
       sessionStorage.removeItem('selectedSiteId');
       
-      // Reset form values - CRITICAL for new site creation
+      // Force reset form values with empty data
       siteForm.reset({
         siteName: "",
         address: "",
@@ -142,18 +142,18 @@ const SiteSubnetPage = () => {
         accessMethod: "snmp",
       });
       
-      // Reset component state
+      // Reset component state for new site
       setSubnets([]);
       setSiteAdded(false);
       setCurrentSiteId(null);
       
-      // Set loading to false since we won't be loading data for a new site
+      // Skip loading data since we're creating a new site
       setIsLoading(false);
     }
     
   }, [location.search, siteForm, subnetForm]);
 
-  // Load existing site data
+  // Load existing site data - ONLY if NOT creating a new site
   useEffect(() => {
     const loadExistingData = async () => {
       if (!user) {
@@ -161,6 +161,7 @@ const SiteSubnetPage = () => {
         return;
       }
       
+      // CRITICAL: Skip data loading completely when creating a new site
       if (isCreatingNewSite) {
         console.log("Creating new site, skipping data load");
         setIsLoading(false);

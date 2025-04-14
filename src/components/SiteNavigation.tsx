@@ -69,7 +69,7 @@ export function SiteNavigation() {
     // Always fetch the list of sites, even when creating a new one
     // This ensures the sidebar shows all existing sites
     fetchSites();
-  }, [user, location.pathname]);
+  }, [user, location.pathname, isCreatingNewSite]);
 
   // Track if we're in new site creation mode
   useEffect(() => {
