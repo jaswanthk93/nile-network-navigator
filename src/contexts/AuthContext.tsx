@@ -50,6 +50,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSession(newSession);
         setUser(newSession?.user ?? null);
         
+        // Only auto-navigate on SIGNED_OUT events, not on internal session changes
         if (event === 'SIGNED_OUT') {
           navigate('/login');
         }

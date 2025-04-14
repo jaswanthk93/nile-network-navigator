@@ -70,15 +70,23 @@ export function SiteNavigation() {
   const handleCreateNewSite = () => {
     console.log("Creating new site - clearing data and navigating to site creation");
     
-    // Remove all site data from storage
+    // Remove all site data from storage but preserve authentication data
+    // Don't clear sessionStorage entirely, as it might contain auth tokens
+    const authData = sessionStorage.getItem('supabase.auth.token');
     sessionStorage.clear();
-    localStorage.clear();
+    if (authData) {
+      sessionStorage.setItem('supabase.auth.token', authData);
+    }
+    
+    // Only clear relevant data in localStorage
+    localStorage.removeItem('creatingNewSite');
+    localStorage.removeItem('selectedSiteId');
     
     // Set new site creation flag
     localStorage.setItem('creatingNewSite', 'true');
     
-    // Force a complete page reload to reset React state
-    window.location.href = `/site-subnet?new=${Date.now()}`;
+    // Use navigate instead of window.location.href to prevent losing auth state
+    navigate(`/site-subnet?new=${Date.now()}`);
     
     toast({
       title: "Create new site",
