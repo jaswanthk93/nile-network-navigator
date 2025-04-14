@@ -5,22 +5,14 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/use-toast";
-import { MapPinIcon, PlusIcon, TrashIcon, KeyIcon, EditIcon, Loader2 } from "lucide-react";
+import { KeyIcon, PlusIcon, TrashIcon, EditIcon, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-
-const siteFormSchema = z.object({
-  siteName: z.string().min(2, { message: "Site name must be at least 2 characters." }),
-  address: z.string().min(5, { message: "Please enter a valid address." }),
-});
-
-type SiteFormValues = z.infer<typeof siteFormSchema>;
 
 const subnetFormSchema = z.object({
   name: z.string().min(2, { message: "Subnet name is required." }),
@@ -72,22 +64,13 @@ const SiteSubnetPage = () => {
   const [subnets, setSubnets] = useState<Subnet[]>([]);
   const [addingSubnet, setAddingSubnet] = useState(false);
   const [editingSubnet, setEditingSubnet] = useState<string | null>(null);
-  const [siteAdded, setSiteAdded] = useState(false);
   const [currentSiteId, setCurrentSiteId] = useState<string | null>(null);
+  const [currentSiteName, setCurrentSiteName] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
-  const [isCreatingNewSite, setIsCreatingNewSite] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-
-  const siteForm = useForm<SiteFormValues>({
-    resolver: zodResolver(siteFormSchema),
-    defaultValues: {
-      siteName: "",
-      address: "",
-    },
-  });
 
   const subnetForm = useForm<SubnetFormValues>({
     resolver: zodResolver(subnetFormSchema),
@@ -106,80 +89,52 @@ const SiteSubnetPage = () => {
   const accessMethod = subnetForm.watch("accessMethod");
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const hasNewParam = params.has('new');
-    const newSiteFlag = localStorage.getItem('creatingNewSite');
-    
-    console.log("New site flag:", newSiteFlag);
-    console.log("URL has new param:", hasNewParam);
-    
-    const shouldCreateNewSite = hasNewParam || newSiteFlag === 'true';
-    
-    setIsCreatingNewSite(shouldCreateNewSite);
-    
-    if (shouldCreateNewSite) {
-      console.log("Creating new site, resetting everything");
-      
-      sessionStorage.removeItem('selectedSiteId');
-      
-      siteForm.reset({
-        siteName: "",
-        address: "",
-      });
-      
-      subnetForm.reset({
-        name: "",
-        subnet: "",
-        prefix: "24",
-        username: "",
-        password: "",
-        community: "public",
-        snmpVersion: "2c",
-        accessMethod: "snmp",
-      });
-      
-      setSubnets([]);
-      setSiteAdded(false);
-      setCurrentSiteId(null);
-      
-      setIsLoading(false);
-    }
-  }, [location.search, siteForm, subnetForm]);
-
-  useEffect(() => {
-    if (isCreatingNewSite) {
-      console.log("In create new site mode, skipping data load");
-      setIsLoading(false);
-      return;
-    }
-    
-    const loadExistingData = async () => {
+    const loadSiteData = async () => {
       if (!user) {
         setIsLoading(false);
         return;
       }
       
       try {
-        console.log("Loading site data for user:", user.id);
-        
-        const params = new URLSearchParams(window.location.search);
+        const params = new URLSearchParams(location.search);
         const siteIdFromUrl = params.get('site');
         
-        if (siteIdFromUrl) {
-          console.log("Loading specific site:", siteIdFromUrl);
-          await loadSiteById(siteIdFromUrl);
-        } else {
-          const savedSiteId = sessionStorage.getItem('selectedSiteId');
+        const siteId = siteIdFromUrl || sessionStorage.getItem('selectedSiteId');
+        
+        if (!siteId) {
+          navigate('/new-site');
+          return;
+        }
+        
+        const { data: site, error: siteError } = await supabase
+          .from('sites')
+          .select('*')
+          .eq('id', siteId)
+          .eq('user_id', user.id)
+          .single();
           
-          if (savedSiteId) {
-            console.log("Loading saved site:", savedSiteId);
-            await loadSiteById(savedSiteId);
-          } else {
-            await loadMostRecentSite();
-          }
+        if (siteError) {
+          console.error("Error loading site:", siteError);
+          toast({
+            title: "Error loading site data",
+            description: siteError.message,
+            variant: "destructive",
+          });
+          navigate('/new-site');
+          return;
+        }
+        
+        if (site) {
+          setCurrentSiteId(site.id);
+          setCurrentSiteName(site.name);
+          sessionStorage.setItem('selectedSiteId', site.id);
+          
+          await loadSubnetsForSite(site.id);
+        } else {
+          navigate('/new-site');
         }
       } catch (error) {
-        console.error("Error in loadExistingData:", error);
+        console.error("Error in loadSiteData:", error);
         toast({
           title: "Error",
           description: "Failed to load site data. Please try again.",
@@ -190,78 +145,9 @@ const SiteSubnetPage = () => {
       }
     };
     
-    if (!isCreatingNewSite && isLoading) {
-      loadExistingData();
-    }
-  }, [user, isCreatingNewSite, isLoading, toast]);
+    loadSiteData();
+  }, [user, location.search, navigate, toast]);
 
-  const loadSiteById = async (siteId: string) => {
-    if (!user) return;
-    
-    const { data: site, error: siteError } = await supabase
-      .from('sites')
-      .select('*')
-      .eq('id', siteId)
-      .eq('user_id', user.id)
-      .single();
-      
-    if (siteError) {
-      console.error("Error loading site:", siteError);
-      toast({
-        title: "Error loading site data",
-        description: siteError.message,
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    console.log("Site data loaded:", site);
-    
-    if (site) {
-      setCurrentSiteId(site.id);
-      siteForm.setValue('siteName', site.name);
-      siteForm.setValue('address', site.location || '');
-      setSiteAdded(true);
-      
-      await loadSubnetsForSite(site.id);
-    }
-  };
-  
-  const loadMostRecentSite = async () => {
-    if (!user) return;
-    
-    const { data: sites, error: sitesError } = await supabase
-      .from('sites')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(1);
-      
-    if (sitesError) {
-      console.error("Error loading sites:", sitesError);
-      toast({
-        title: "Error loading site data",
-        description: sitesError.message,
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    if (sites && sites.length > 0) {
-      const site = sites[0];
-      setCurrentSiteId(site.id);
-      siteForm.setValue('siteName', site.name);
-      siteForm.setValue('address', site.location || '');
-      setSiteAdded(true);
-      
-      await loadSubnetsForSite(site.id);
-    } else {
-      setSubnets([]);
-      setSiteAdded(false);
-      setCurrentSiteId(null);
-    }
-  };
-  
   const loadSubnetsForSite = async (siteId: string) => {
     if (!user) return;
     
@@ -302,51 +188,6 @@ const SiteSubnetPage = () => {
     }
   };
 
-  const onSiteSubmit = async (values: SiteFormValues) => {
-    if (!user) {
-      toast({
-        title: "Authentication required",
-        description: "Please log in to add site information.",
-        variant: "destructive",
-      });
-      navigate('/login');
-      return;
-    }
-    
-    try {
-      const { data, error } = await supabase
-        .from('sites')
-        .insert({
-          name: values.siteName,
-          location: values.address,
-          user_id: user.id
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      setCurrentSiteId(data.id);
-      toast({
-        title: "Site information saved",
-        description: "Your site has been successfully added.",
-      });
-      setSiteAdded(true);
-      
-      localStorage.removeItem('creatingNewSite');
-      setIsCreatingNewSite(false);
-      
-      sessionStorage.setItem('selectedSiteId', data.id);
-    } catch (error) {
-      console.error("Error saving site:", error);
-      toast({
-        title: "Error saving site",
-        description: "There was a problem saving your site information.",
-        variant: "destructive",
-      });
-    }
-  };
-
   const startEditSubnet = (subnet: Subnet) => {
     setEditingSubnet(subnet.id);
     setAddingSubnet(false);
@@ -381,9 +222,10 @@ const SiteSubnetPage = () => {
     if (!user || !currentSiteId) {
       toast({
         title: "Error",
-        description: "Site must be created before adding subnets.",
+        description: "No active site found. Please select or create a site.",
         variant: "destructive",
       });
+      navigate('/new-site');
       return;
     }
     
@@ -594,341 +436,280 @@ const SiteSubnetPage = () => {
     <div className="container mx-auto max-w-4xl space-y-8">
       <div className="flex flex-col space-y-2">
         <h1 className="text-2xl font-bold tracking-tight">
-          {isCreatingNewSite 
-            ? "Create New Site" 
-            : "Site & Subnet Configuration"}
+          Site: {currentSiteName}
         </h1>
         <p className="text-muted-foreground">
-          {isCreatingNewSite
-            ? "Begin by creating a new network site for migration"
-            : "Define your network site and management subnets for discovery."}
+          Configure management subnets for this site
         </p>
       </div>
 
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MapPinIcon className="h-5 w-5" />
-              Site Information
-            </CardTitle>
-            <CardDescription>
-              Enter details about the site where network devices are located
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...siteForm}>
-              <form onSubmit={siteForm.handleSubmit(onSiteSubmit)} className="space-y-4">
-                <FormField
-                  control={siteForm.control}
-                  name="siteName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Site Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Main Office" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={siteForm.control}
-                  name="address"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Address</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="123 Network Street, Server City, SC 12345"
-                          className="min-h-[80px]"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <Button type="submit" disabled={siteAdded}>
-                  {siteAdded ? "Site Saved" : "Save Site Information"}
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
-
-        {siteAdded && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <KeyIcon className="h-5 w-5" />
-                Management Subnets
-              </CardTitle>
-              <CardDescription>
-                Add management subnets where network devices can be discovered
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {subnets.length > 0 ? (
-                <div className="space-y-4">
-                  {subnets.map((subnet) => (
-                    <div key={subnet.id} className="rounded-lg border p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-medium">{subnet.name}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            {subnet.subnet}/{subnet.prefix} ({subnet.accessMethod.toUpperCase()})
-                          </p>
-                        </div>
-                        <div className="flex space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => startEditSubnet(subnet)}
-                            aria-label={`Edit ${subnet.name}`}
-                          >
-                            <EditIcon className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeSubnet(subnet.id)}
-                            aria-label={`Remove ${subnet.name}`}
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <KeyIcon className="h-5 w-5" />
+            Management Subnets
+          </CardTitle>
+          <CardDescription>
+            Add management subnets where network devices can be discovered
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {subnets.length > 0 ? (
+            <div className="space-y-4">
+              {subnets.map((subnet) => (
+                <div key={subnet.id} className="rounded-lg border p-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="font-medium">{subnet.name}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {subnet.subnet}/{subnet.prefix} ({subnet.accessMethod.toUpperCase()})
+                      </p>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <Alert className="bg-muted">
-                  <AlertTitle>No subnets added yet</AlertTitle>
-                  <AlertDescription>
-                    Add management subnets to discover network devices.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {(addingSubnet || editingSubnet) ? (
-                <div className="mt-6 space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-medium">
-                      {editingSubnet ? "Edit Subnet" : "Add New Subnet"}
-                    </h3>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setAddingSubnet(false);
-                        setEditingSubnet(null);
-                        subnetForm.reset();
-                      }}
-                    >
-                      Cancel
-                    </Button>
+                    <div className="flex space-x-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => startEditSubnet(subnet)}
+                        aria-label={`Edit ${subnet.name}`}
+                      >
+                        <EditIcon className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeSubnet(subnet.id)}
+                        aria-label={`Remove ${subnet.name}`}
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <Form {...subnetForm}>
-                    <form onSubmit={subnetForm.handleSubmit(onSubnetSubmit)} className="space-y-4">
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Alert className="bg-muted">
+              <AlertTitle>No subnets added yet</AlertTitle>
+              <AlertDescription>
+                Add management subnets to discover network devices.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {(addingSubnet || editingSubnet) ? (
+            <div className="mt-6 space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium">
+                  {editingSubnet ? "Edit Subnet" : "Add New Subnet"}
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setAddingSubnet(false);
+                    setEditingSubnet(null);
+                    subnetForm.reset();
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+              <Form {...subnetForm}>
+                <form onSubmit={subnetForm.handleSubmit(onSubnetSubmit)} className="space-y-4">
+                  <FormField
+                    control={subnetForm.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Subnet Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Management VLAN" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={subnetForm.control}
+                      name="subnet"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Subnet</FormLabel>
+                          <FormControl>
+                            <Input placeholder="192.168.10.0" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={subnetForm.control}
+                      name="prefix"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Prefix</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select prefix" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {Array.from({ length: 33 }, (_, i) => i).map((prefix) => (
+                                <SelectItem key={prefix} value={prefix.toString()}>
+                                  /{prefix}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={subnetForm.control}
+                    name="accessMethod"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Access Method</FormLabel>
+                        <Select
+                          onValueChange={field.onChange as (value: string) => void}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select access method" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="snmp">SNMP</SelectItem>
+                            <SelectItem value="ssh">SSH</SelectItem>
+                            <SelectItem value="telnet">Telnet</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {accessMethod === 'snmp' ? (
+                    <div className="space-y-4">
                       <FormField
                         control={subnetForm.control}
-                        name="name"
+                        name="community"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Subnet Name</FormLabel>
+                            <FormLabel>SNMP Community String</FormLabel>
                             <FormControl>
-                              <Input placeholder="Management VLAN" {...field} />
+                              <Input placeholder="public" {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <FormField
-                          control={subnetForm.control}
-                          name="subnet"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Subnet</FormLabel>
-                              <FormControl>
-                                <Input placeholder="192.168.10.0" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={subnetForm.control}
-                          name="prefix"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Prefix</FormLabel>
-                              <Select
-                                onValueChange={field.onChange}
-                                value={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select prefix" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {Array.from({ length: 33 }, (_, i) => i).map((prefix) => (
-                                    <SelectItem key={prefix} value={prefix.toString()}>
-                                      /{prefix}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
+                      
                       <FormField
                         control={subnetForm.control}
-                        name="accessMethod"
+                        name="snmpVersion"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Access Method</FormLabel>
+                            <FormLabel>SNMP Version</FormLabel>
                             <Select
                               onValueChange={field.onChange as (value: string) => void}
                               value={field.value}
                             >
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Select access method" />
+                                  <SelectValue placeholder="Select SNMP version" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="snmp">SNMP</SelectItem>
-                                <SelectItem value="ssh">SSH</SelectItem>
-                                <SelectItem value="telnet">Telnet</SelectItem>
+                                <SelectItem value="1">SNMP v1</SelectItem>
+                                <SelectItem value="2c">SNMP v2c</SelectItem>
+                                <SelectItem value="3">SNMP v3</SelectItem>
                               </SelectContent>
                             </Select>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={subnetForm.control}
+                        name="username"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Username</FormLabel>
+                            <FormControl>
+                              <Input placeholder="admin" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                      {accessMethod === 'snmp' ? (
-                        <div className="space-y-4">
-                          <FormField
-                            control={subnetForm.control}
-                            name="community"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>SNMP Community String</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="public" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          
-                          <FormField
-                            control={subnetForm.control}
-                            name="snmpVersion"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>SNMP Version</FormLabel>
-                                <Select
-                                  onValueChange={field.onChange as (value: string) => void}
-                                  value={field.value}
-                                >
-                                  <FormControl>
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Select SNMP version" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    <SelectItem value="1">SNMP v1</SelectItem>
-                                    <SelectItem value="2c">SNMP v2c</SelectItem>
-                                    <SelectItem value="3">SNMP v3</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-4">
-                          <FormField
-                            control={subnetForm.control}
-                            name="username"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Username</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="admin" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
+                      <FormField
+                        control={subnetForm.control}
+                        name="password"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Password</FormLabel>
+                            <FormControl>
+                              <Input type="password" placeholder="••••••••" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
 
-                          <FormField
-                            control={subnetForm.control}
-                            name="password"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Password</FormLabel>
-                                <FormControl>
-                                  <Input type="password" placeholder="••••••••" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                      )}
-
-                      <Button type="submit">{editingSubnet ? "Update Subnet" : "Add Subnet"}</Button>
-                    </form>
-                  </Form>
-                </div>
-              ) : (
-                <Button
-                  variant="outline"
-                  className="mt-4"
-                  onClick={() => {
-                    setAddingSubnet(true);
-                    subnetForm.reset({
-                      name: "",
-                      subnet: "",
-                      prefix: "24",
-                      username: "",
-                      password: "",
-                      community: "public",
-                      snmpVersion: "2c",
-                      accessMethod: "snmp",
-                    });
-                  }}
-                >
-                  <PlusIcon className="h-4 w-4 mr-2" />
-                  Add Subnet
-                </Button>
-              )}
-            </CardContent>
-            <CardFooter className="flex justify-between border-t px-6 py-4">
-              <Button variant="outline" onClick={() => navigate("/")}>
-                Back
-              </Button>
-              <Button onClick={handleNext}>
-                Continue to Discovery
-              </Button>
-            </CardFooter>
-          </Card>
-        )}
-      </div>
+                  <Button type="submit">{editingSubnet ? "Update Subnet" : "Add Subnet"}</Button>
+                </form>
+              </Form>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              className="mt-4"
+              onClick={() => {
+                setAddingSubnet(true);
+                subnetForm.reset({
+                  name: "",
+                  subnet: "",
+                  prefix: "24",
+                  username: "",
+                  password: "",
+                  community: "public",
+                  snmpVersion: "2c",
+                  accessMethod: "snmp",
+                });
+              }}
+            >
+              <PlusIcon className="h-4 w-4 mr-2" />
+              Add Subnet
+            </Button>
+          )}
+        </CardContent>
+        <CardFooter className="flex justify-between border-t px-6 py-4">
+          <Button variant="outline" onClick={() => navigate("/")}>
+            Back
+          </Button>
+          <Button onClick={handleNext} disabled={subnets.length === 0}>
+            Continue to Discovery
+          </Button>
+        </CardFooter>
+      </Card>
     </div>
   );
 };

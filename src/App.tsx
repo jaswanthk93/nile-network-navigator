@@ -10,6 +10,7 @@ import AppLayout from "./layouts/AppLayout";
 import RegisterPage from "./pages/auth/RegisterPage";
 import LoginPage from "./pages/auth/LoginPage";
 import WelcomePage from "./pages/app/WelcomePage";
+import NewSitePage from "./pages/app/NewSitePage";
 import SiteSubnetPage from "./pages/app/SiteSubnetPage";
 import DiscoveryPage from "./pages/app/DiscoveryPage";
 import DevicesPage from "./pages/app/DevicesPage";
@@ -41,6 +42,7 @@ const App = () => (
             {/* App Routes */}
             <Route element={<AppLayout />}>
               <Route path="/" element={<WelcomePage />} />
+              <Route path="/new-site" element={<NewSitePage />} />
               <Route path="/site-subnet" element={<SiteSubnetPage />} />
               <Route path="/discovery" element={<DiscoveryPage />} />
               <Route path="/devices" element={<DevicesPage />} />

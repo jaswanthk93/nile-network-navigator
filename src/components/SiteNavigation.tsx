@@ -24,22 +24,7 @@ export function SiteNavigation() {
   const location = useLocation();
   const [isCreatingNewSite, setIsCreatingNewSite] = useState(false);
 
-  // Check if creating a new site - this should run first
-  useEffect(() => {
-    const creatingNewSite = localStorage.getItem('creatingNewSite') === 'true';
-    const params = new URLSearchParams(location.search);
-    const hasNewParam = params.has('new');
-    
-    // Set the creation state immediately to control UI
-    setIsCreatingNewSite(creatingNewSite || hasNewParam);
-    
-    // If creating a new site, always close any open site
-    if (creatingNewSite || hasNewParam) {
-      setOpenSiteId(null);
-    }
-  }, [location.search]);
-
-  // Fetch sites independently of creation state
+  // Fetch sites
   useEffect(() => {
     async function fetchSites() {
       if (!user) return;
@@ -70,7 +55,7 @@ export function SiteNavigation() {
     
     // Always fetch sites to show in sidebar, regardless of creation state
     fetchSites();
-  }, [user, location.pathname, isCreatingNewSite]);
+  }, [user, isCreatingNewSite]);
 
   // Handle site selection based on stored ID - separate from creation state
   useEffect(() => {
@@ -80,19 +65,26 @@ export function SiteNavigation() {
       return;
     }
     
-    // Get current site ID from session storage
-    const currentSiteId = sessionStorage.getItem('selectedSiteId');
+    // Check if we're on the new-site route
+    if (location.pathname === '/new-site') {
+      setIsCreatingNewSite(true);
+      setOpenSiteId(null);
+      return;
+    }
+    
+    // Get current site ID from session storage or URL
+    const params = new URLSearchParams(location.search);
+    const siteIdFromUrl = params.get('site');
+    const currentSiteId = siteIdFromUrl || sessionStorage.getItem('selectedSiteId');
     
     if (currentSiteId) {
       setOpenSiteId(currentSiteId);
+      setIsCreatingNewSite(false);
     }
-  }, [location.pathname, isCreatingNewSite]);
+  }, [location.pathname, location.search, isCreatingNewSite]);
 
   const handleCreateNewSite = () => {
-    console.log("Creating new site - clearing data and navigating to site creation");
-    
-    // Set creation flag before navigating
-    localStorage.setItem('creatingNewSite', 'true');
+    console.log("Creating new site - navigating to new site page");
     
     // Clear site selection and related data
     sessionStorage.removeItem('selectedSiteId');
@@ -102,9 +94,8 @@ export function SiteNavigation() {
     setOpenSiteId(null);
     setIsCreatingNewSite(true);
     
-    // Use navigate with a unique timestamp to force component reloads
-    const timestamp = Date.now();
-    navigate(`/site-subnet?new=${timestamp}`);
+    // Navigate to the dedicated new site page
+    navigate('/new-site');
     
     toast({
       title: "Create new site",
@@ -122,10 +113,6 @@ export function SiteNavigation() {
     
     // Toggle site expansion in UI
     setOpenSiteId(openSiteId === siteId ? null : siteId);
-    
-    // Clear new site creation flag if it exists
-    localStorage.removeItem('creatingNewSite');
-    setIsCreatingNewSite(false);
     
     // Store the selected site ID
     sessionStorage.setItem('selectedSiteId', siteId);
@@ -173,11 +160,11 @@ export function SiteNavigation() {
           onClick={handleCreateNewSite}
           className={cn(
             "flex items-center gap-2 px-3 py-2 w-full text-left rounded-md text-sm",
-            isCreatingNewSite ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent"
+            location.pathname === '/new-site' ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent"
           )}
         >
-          <Plus className={cn("h-4 w-4", isCreatingNewSite ? "text-primary" : "")} />
-          <span>{isCreatingNewSite ? "Creating New Site Migration..." : "Create New Site Migration"}</span>
+          <Plus className={cn("h-4 w-4", location.pathname === '/new-site' ? "text-primary" : "")} />
+          <span>{location.pathname === '/new-site' ? "Creating New Site Migration..." : "Create New Site Migration"}</span>
         </button>
         
         {isLoading ? (
