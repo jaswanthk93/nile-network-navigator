@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,21 +24,22 @@ export function SiteNavigation() {
   const location = useLocation();
   const [isCreatingNewSite, setIsCreatingNewSite] = useState(false);
 
-  // Check if creating a new site
+  // Check if creating a new site - this should run first
   useEffect(() => {
     const creatingNewSite = localStorage.getItem('creatingNewSite') === 'true';
     const params = new URLSearchParams(location.search);
     const hasNewParam = params.has('new');
     
+    // Set the creation state immediately to control UI
     setIsCreatingNewSite(creatingNewSite || hasNewParam);
     
+    // If creating a new site, always close any open site
     if (creatingNewSite || hasNewParam) {
-      // If creating a new site, close any open site
       setOpenSiteId(null);
     }
   }, [location.search]);
 
-  // Fetch sites when component mounts or user changes
+  // Fetch sites independently of creation state
   useEffect(() => {
     async function fetchSites() {
       if (!user) return;
@@ -53,9 +53,11 @@ export function SiteNavigation() {
           .order('created_at', { ascending: false });
           
         if (error) throw error;
+        
         setSites(data || []);
         
         // Only auto-select a site if we're not in new site creation mode
+        // and no site is currently selected
         if (data?.length > 0 && !isCreatingNewSite && !sessionStorage.getItem('selectedSiteId')) {
           sessionStorage.setItem('selectedSiteId', data[0].id);
         }
@@ -66,12 +68,11 @@ export function SiteNavigation() {
       }
     }
     
-    // Always fetch the list of sites, even when creating a new one
-    // This ensures the sidebar shows all existing sites
+    // Always fetch sites to show in sidebar, regardless of creation state
     fetchSites();
   }, [user, location.pathname, isCreatingNewSite]);
 
-  // Track if we're in new site creation mode
+  // Handle site selection based on stored ID - separate from creation state
   useEffect(() => {
     // Don't select a site if we're creating a new one
     if (isCreatingNewSite) {
@@ -90,13 +91,10 @@ export function SiteNavigation() {
   const handleCreateNewSite = () => {
     console.log("Creating new site - clearing data and navigating to site creation");
     
-    // Don't clear the site list when creating a new site
-    // Just set creation flag and navigate
-    
-    // Set creation flag
+    // Set creation flag before navigating
     localStorage.setItem('creatingNewSite', 'true');
     
-    // Clear form-related data
+    // Clear site selection and related data
     sessionStorage.removeItem('selectedSiteId');
     sessionStorage.removeItem('subnetIds');
     
@@ -132,7 +130,7 @@ export function SiteNavigation() {
     // Store the selected site ID
     sessionStorage.setItem('selectedSiteId', siteId);
     
-    // If we're not on a site-related page, navigate to the site subnet page
+    // Navigate to site page if needed
     if (!location.pathname.includes('site-') && !location.pathname.includes('discovery') && 
         !location.pathname.includes('devices') && !location.pathname.includes('vlans') &&
         !location.pathname.includes('mac-addresses') && !location.pathname.includes('export')) {
@@ -158,7 +156,7 @@ export function SiteNavigation() {
     );
   };
 
-  // If creating a new site, still show existing sites but highlight the "Creating New Site" button
+  // Always show existing sites alongside the creation button
   return (
     <div className="w-full space-y-2">
       <NavLink to="/" className="flex items-center gap-2 px-3 py-2 w-full rounded-md">
@@ -175,7 +173,7 @@ export function SiteNavigation() {
           onClick={handleCreateNewSite}
           className={cn(
             "flex items-center gap-2 px-3 py-2 w-full text-left rounded-md text-sm",
-            isCreatingNewSite ? "bg-accent/50 font-medium" : "hover:bg-accent"
+            isCreatingNewSite ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent"
           )}
         >
           <Plus className={cn("h-4 w-4", isCreatingNewSite ? "text-primary" : "")} />
