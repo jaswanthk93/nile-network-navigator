@@ -1,15 +1,8 @@
 
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { 
-  NavigationMenu,
-  NavigationMenuContent,
-  NavigationMenuItem,
-  NavigationMenuList,
-  NavigationMenuTrigger,
-} from "@/components/ui/navigation-menu";
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +14,9 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuPortal
 } from "@/components/ui/dropdown-menu";
-import { Home, Network, Radio, Server, Layers, FileDown, Plus, ChevronRight } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Home, Network, Radio, Server, Layers, FileDown, Plus, ChevronRight, ChevronDown } from "lucide-react";
 import { MacAddressIcon } from "@/components/MacAddressIcon";
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
@@ -36,7 +31,9 @@ export function SiteNavigation() {
   const { user } = useAuth();
   const [sites, setSites] = useState<Site[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [openSiteId, setOpenSiteId] = useState<string | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     async function fetchSites() {
@@ -67,6 +64,8 @@ export function SiteNavigation() {
     sessionStorage.removeItem('selectedSiteId');
     localStorage.removeItem('currentSite');
     localStorage.removeItem('subnetIds');
+    localStorage.removeItem('managementSubnets');
+    localStorage.removeItem('userSubnets');
     
     // Set a flag to indicate a fresh site creation
     localStorage.setItem('creatingNewSite', 'true');
@@ -80,10 +79,31 @@ export function SiteNavigation() {
   };
 
   const handleSiteSelect = (siteId: string) => {
+    console.log(`Site selected: ${siteId}`);
+    // Toggle site expansion
+    setOpenSiteId(openSiteId === siteId ? null : siteId);
     // Remove new site creation flag if it exists
     localStorage.removeItem('creatingNewSite');
     // Store the selected site ID
     sessionStorage.setItem('selectedSiteId', siteId);
+  };
+
+  const SiteLink = ({ siteId, to, icon: Icon, children }: { siteId: string, to: string, icon: React.ElementType, children: React.ReactNode }) => {
+    const isActive = location.pathname === to.split('?')[0] && location.search.includes(`site=${siteId}`);
+    
+    return (
+      <Link
+        to={`${to}?site=${siteId}`}
+        className={cn(
+          "flex items-center gap-2 px-3 py-2 rounded-md text-sm w-full",
+          isActive ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent/50 text-muted-foreground hover:text-foreground"
+        )}
+        onClick={() => sessionStorage.setItem('selectedSiteId', siteId)}
+      >
+        <Icon className="h-4 w-4" />
+        <span>{children}</span>
+      </Link>
+    );
   };
 
   return (
@@ -93,91 +113,72 @@ export function SiteNavigation() {
         <span>Welcome</span>
       </NavLink>
       
-      <DropdownMenu>
-        <DropdownMenuTrigger className="flex items-center gap-2 px-3 py-2 w-full justify-start text-left rounded-md hover:bg-accent">
-          <Network className="h-5 w-5" />
-          <span>Sites</span>
-          <ChevronRight className="ml-auto h-4 w-4 transform transition-transform duration-200 group-data-[state=open]:rotate-90" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56" align="start" sideOffset={8}>
-          <DropdownMenuItem onClick={handleCreateNewSite} className="cursor-pointer">
-            <Plus className="mr-2 h-4 w-4 text-primary" />
-            <span>Create New Site Migration</span>
-          </DropdownMenuItem>
-          
-          <DropdownMenuSeparator />
-          
-          {isLoading ? (
-            <DropdownMenuItem disabled>
-              Loading sites...
-            </DropdownMenuItem>
-          ) : sites.length === 0 ? (
-            <DropdownMenuItem disabled>
-              No sites found. Create your first site.
-            </DropdownMenuItem>
-          ) : (
-            sites.map((site) => (
-              <DropdownMenuSub key={site.id}>
-                <DropdownMenuSubTrigger>
-                  <span className="truncate">{site.name}</span>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuPortal>
-                  <DropdownMenuSubContent className="w-56">
-                    <Link 
-                      to={`/site-subnet?site=${site.id}`} 
-                      className="flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-accent w-full"
-                      onClick={() => handleSiteSelect(site.id)}
-                    >
-                      <Network className="h-4 w-4" />
-                      <span>Site & Subnet</span>
-                    </Link>
-                    <Link 
-                      to={`/discovery?site=${site.id}`} 
-                      className="flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-accent w-full"
-                      onClick={() => handleSiteSelect(site.id)}
-                    >
-                      <Radio className="h-4 w-4" />
-                      <span>Discovery</span>
-                    </Link>
-                    <Link 
-                      to={`/devices?site=${site.id}`} 
-                      className="flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-accent w-full"
-                      onClick={() => handleSiteSelect(site.id)}
-                    >
-                      <Server className="h-4 w-4" />
-                      <span>Network Elements</span>
-                    </Link>
-                    <Link 
-                      to={`/vlans?site=${site.id}`} 
-                      className="flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-accent w-full"
-                      onClick={() => handleSiteSelect(site.id)}
-                    >
-                      <Layers className="h-4 w-4" />
-                      <span>VLANs</span>
-                    </Link>
-                    <Link 
-                      to={`/mac-addresses?site=${site.id}`} 
-                      className="flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-accent w-full"
-                      onClick={() => handleSiteSelect(site.id)}
-                    >
-                      <MacAddressIcon className="h-4 w-4" />
-                      <span>MAC Addresses</span>
-                    </Link>
-                    <Link 
-                      to={`/export?site=${site.id}`} 
-                      className="flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-accent w-full"
-                      onClick={() => handleSiteSelect(site.id)}
-                    >
-                      <FileDown className="h-4 w-4" />
-                      <span>Export</span>
-                    </Link>
-                  </DropdownMenuSubContent>
-                </DropdownMenuPortal>
-              </DropdownMenuSub>
-            ))
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <div className="px-3 text-sm font-medium text-muted-foreground">
+        Sites
+      </div>
+
+      <div className="space-y-1">
+        <button
+          onClick={handleCreateNewSite}
+          className="flex items-center gap-2 px-3 py-2 w-full text-left rounded-md hover:bg-accent text-sm"
+        >
+          <Plus className="h-4 w-4 text-primary" />
+          <span>Create New Site Migration</span>
+        </button>
+        
+        {isLoading ? (
+          <div className="px-3 py-2 text-sm text-muted-foreground">
+            Loading sites...
+          </div>
+        ) : sites.length === 0 ? (
+          <div className="px-3 py-2 text-sm text-muted-foreground">
+            No sites found. Create your first site.
+          </div>
+        ) : (
+          <ScrollArea className="h-auto max-h-[50vh]">
+            <div className="space-y-1 pr-2">
+              {sites.map((site) => (
+                <Collapsible 
+                  key={site.id}
+                  open={openSiteId === site.id}
+                  onOpenChange={() => handleSiteSelect(site.id)}
+                >
+                  <CollapsibleTrigger className="flex items-center justify-between w-full px-3 py-2 text-sm rounded-md hover:bg-accent text-left">
+                    <div className="flex items-center">
+                      <Network className="h-4 w-4 mr-2" />
+                      <span className="truncate">{site.name}</span>
+                    </div>
+                    <ChevronRight className={cn(
+                      "h-4 w-4 transition-transform",
+                      openSiteId === site.id && "transform rotate-90"
+                    )} />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pl-8 pr-2 space-y-1 pt-1">
+                    <SiteLink siteId={site.id} to="/site-subnet" icon={Network}>
+                      Site & Subnet
+                    </SiteLink>
+                    <SiteLink siteId={site.id} to="/discovery" icon={Radio}>
+                      Discovery
+                    </SiteLink>
+                    <SiteLink siteId={site.id} to="/devices" icon={Server}>
+                      Network Elements
+                    </SiteLink>
+                    <SiteLink siteId={site.id} to="/vlans" icon={Layers}>
+                      VLANs
+                    </SiteLink>
+                    <SiteLink siteId={site.id} to="/mac-addresses" icon={MacAddressIcon}>
+                      MAC Addresses
+                    </SiteLink>
+                    <SiteLink siteId={site.id} to="/export" icon={FileDown}>
+                      Export
+                    </SiteLink>
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
     </div>
   );
 }

@@ -42,11 +42,11 @@ const AppLayout = () => {
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
-        <Sidebar className="max-h-screen">
+        <Sidebar className="max-h-screen overflow-hidden">
           <SidebarHeader className="flex items-center justify-between px-4 py-2">
             <Logo />
           </SidebarHeader>
-          <SidebarContent className="flex-grow overflow-y-auto">
+          <SidebarContent className="flex-grow overflow-y-auto overflow-x-hidden">
             <SidebarGroup>
               <SiteNavigation />
             </SidebarGroup>
