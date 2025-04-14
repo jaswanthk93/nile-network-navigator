@@ -1,5 +1,3 @@
-
-import { Outlet, Navigate } from "react-router-dom";
 import { 
   Sidebar, 
   SidebarProvider, 
@@ -55,7 +53,6 @@ const AppLayout = () => {
         <Sidebar>
           <SidebarHeader className="flex items-center justify-between px-4 py-2">
             <Logo />
-            <BackendConnectionButton />
           </SidebarHeader>
           <SidebarContent>
             <SidebarGroup>
@@ -85,10 +82,10 @@ const AppLayout = () => {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Devices">
+                  <SidebarMenuButton asChild tooltip="Network Elements">
                     <Link to="/devices">
                       <Server className="h-5 w-5" />
-                      <span>Devices</span>
+                      <span>Network Elements</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -122,6 +119,7 @@ const AppLayout = () => {
           <SidebarFooter className="p-4">
             <div className="flex justify-between items-center">
               <UserNav />
+              <BackendConnectionButton />
               <button 
                 onClick={() => signOut()}
                 className="text-muted-foreground hover:text-foreground rounded-full p-2 hover:bg-muted transition-colors"
