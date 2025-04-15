@@ -77,7 +77,12 @@ export async function getVlansFromSwitch(
         console.error("Error getting existing device:", getDeviceError);
       }
       
-      const updatePayload = {
+      const updatePayload: {
+        hostname: string;
+        needs_verification: boolean;
+        confirmed: boolean;
+        sysdescr?: string;
+      } = {
         hostname: deviceHostname, // Always use the SNMP-discovered hostname
         needs_verification: false,
         confirmed: true
