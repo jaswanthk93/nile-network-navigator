@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,21 @@ export function DeviceTableRow({
 
   const isSwitch = device.category === "Switch";
 
+  // Predefined lists for dropdowns
+  const deviceMakes = [
+    "Cisco",
+    "Juniper",
+    "Arista",
+    "HPE",
+    "Dell",
+    "Ubiquiti",
+    "Meraki",
+    "Fortinet",
+    "Netgear",
+    "Ruckus",
+    "Other"
+  ];
+
   return (
     <TableRow className={device.needsVerification ? "bg-amber-50" : ""}>
       <TableCell className="font-mono">{device.ipAddress}</TableCell>
@@ -114,11 +130,21 @@ export function DeviceTableRow({
       <TableCell>
         {editField === "make" ? (
           <div className="flex space-x-2">
-            <Input
-              className="h-8 w-full"
+            <Select
               value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-            />
+              onValueChange={setEditValue}
+            >
+              <SelectTrigger className="h-8 w-full">
+                <SelectValue placeholder="Select make..." />
+              </SelectTrigger>
+              <SelectContent>
+                {deviceMakes.map((make) => (
+                  <SelectItem key={make} value={make}>
+                    {make}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               variant="ghost"
               size="icon"

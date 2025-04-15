@@ -67,8 +67,9 @@ export const useDeviceData = (userId: string | undefined) => {
     fetchDevices();
   }, [userId, toast]);
 
-  const handleSaveEdit = async (id: string, field: keyof Device, value: string) => {
+  const handleSaveEdit = async (id: string, field: string, value: string) => {
     try {
+      // First update local state to maintain UI responsiveness
       setDevices(devices.map(device => 
         device.id === id ? { ...device, [field]: value } : device
       ));
@@ -80,12 +81,15 @@ export const useDeviceData = (userId: string | undefined) => {
         'category': 'category'
       };
       
+      // Then update the database
       const { error } = await supabase
         .from('devices')
         .update({ 
           [fieldMapping[field]]: value,
-          confirmed: true,
-          needs_verification: false
+          // Only mark this device as confirmed if it wasn't already
+          ...(devices.find(d => d.id === id)?.needsVerification 
+            ? { confirmed: true, needs_verification: false } 
+            : {})
         })
         .eq('id', id);
       
@@ -93,12 +97,15 @@ export const useDeviceData = (userId: string | undefined) => {
         throw error;
       }
       
+      // Update the local state again with confirmation status
       setDevices(devices.map(device => 
         device.id === id ? { 
           ...device, 
           [field]: value,
-          confirmed: true,
-          needsVerification: false
+          ...(device.needsVerification ? {
+            confirmed: true,
+            needsVerification: false
+          } : {})
         } : device
       ));
       
