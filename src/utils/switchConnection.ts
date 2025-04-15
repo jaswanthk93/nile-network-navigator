@@ -15,7 +15,8 @@ export type { SwitchConnectionDetails } from '../types/network';
 export {
   executeSnmpQueries,
   executeSnmpWalk,
-  disconnectSession
+  disconnectSession,
+  discoverMacAddressesWithSNMP
 } from './apiClient';
 export {
   getVlansFromSwitch
@@ -23,3 +24,6 @@ export {
 export {
   discoverVlans
 } from './network/vlanDiscovery';
+export {
+  discoverMacAddresses
+} from './network/snmpDiscovery';

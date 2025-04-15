@@ -71,3 +71,38 @@ export async function getDeviceInfoViaSNMP(
     };
   }
 }
+
+/**
+ * Discover MAC addresses on a device using SNMP
+ */
+export async function discoverMacAddresses(
+  ipAddress: string,
+  community: string = "public",
+  version: string = "2c",
+  updateProgress?: (message: string, progress: number) => void
+): Promise<{
+  macAddresses: Array<{
+    macAddress: string;
+    vlanId: number;
+    port?: string;
+    deviceType: string;
+  }>;
+  vlanIds: number[];
+}> {
+  try {
+    if (updateProgress) {
+      updateProgress(`Discovering MAC addresses on ${ipAddress}...`, 50);
+    }
+    
+    const result = await discoverMacAddressesWithSNMP(ipAddress, community, version);
+    
+    if (updateProgress) {
+      updateProgress(`Found ${result.macAddresses.length} MAC addresses across ${result.vlanIds.length} VLANs`, 100);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error(`Error discovering MAC addresses on ${ipAddress}:`, error);
+    throw error;
+  }
+}
