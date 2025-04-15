@@ -8,6 +8,67 @@ interface MacAddressDiscoveryResult {
 }
 
 /**
+ * Get device information via SNMP
+ * This is a simplified version that only returns basic device info
+ */
+export async function getDeviceInfoViaSNMP(
+  ip: string,
+  updateProgress?: (message: string, progress: number) => void,
+  backendConnected: boolean = false
+): Promise<any> {
+  try {
+    if (updateProgress) {
+      updateProgress(`Getting SNMP information from ${ip}...`, 5);
+    }
+
+    // When backend is connected, use real SNMP discovery
+    if (backendConnected) {
+      const { data, error } = await fetch('/api/devices/discover', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ip,
+          community: 'public',
+          version: '2c'
+        }),
+      }).then(res => res.json());
+
+      if (error) {
+        console.error(`Error discovering device info for ${ip}:`, error);
+        return { error };
+      }
+
+      if (updateProgress) {
+        updateProgress(`Received SNMP information for ${ip}`, 10);
+      }
+
+      return {
+        hostname: data?.device?.sysName || null,
+        make: data?.device?.manufacturer || null,
+        model: data?.device?.model || null,
+        category: data?.device?.type || 'Unknown',
+        sysDescr: data?.device?.sysDescr || null
+      };
+    } else {
+      // Simulated response for development without backend
+      console.log(`[Simulated] Getting SNMP information for ${ip}`);
+      return {
+        hostname: `device-${ip.split('.').pop()}`,
+        make: 'SimulatedDevice',
+        model: 'DevSim2000',
+        category: 'Switch',
+        sysDescr: 'Simulated device for development'
+      };
+    }
+  } catch (error) {
+    console.error(`Error in getDeviceInfoViaSNMP for ${ip}:`, error);
+    return { error };
+  }
+}
+
+/**
  * Discover MAC addresses on a switch using SNMP
  * This function performs targeted SNMP walks for each VLAN to discover MAC addresses
  */
