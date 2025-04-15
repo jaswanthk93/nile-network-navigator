@@ -40,8 +40,9 @@ exports.discoverMacAddresses = async (req, res) => {
     
     if (vlanIds && Array.isArray(vlanIds) && vlanIds.length > 0) {
       // Use the provided list of VLAN IDs
-      vlans = vlanIds;
-      logger.info(`[SNMP] Using provided list of ${vlans.length} VLANs: ${vlans.join(', ')}`);
+      // Make sure each VLAN ID is included only once
+      vlans = [...new Set(vlanIds)];
+      logger.info(`[SNMP] Using provided list of ${vlans.length} unique VLANs: ${vlans.join(', ')}`);
     } else if (vlanId) {
       // Query specific VLAN
       vlans = [vlanId];
@@ -51,8 +52,9 @@ exports.discoverMacAddresses = async (req, res) => {
       try {
         logger.info(`[SNMP] No VLANs specified, discovering VLANs first`);
         const vlanResult = await vlanHandler.discoverVlans(ip, community, version);
-        vlans = vlanResult.vlans.map(vlan => vlan.vlanId);
-        logger.info(`[SNMP] Discovered ${vlans.length} VLANs for MAC address lookup: ${vlans.join(', ')}`);
+        // Ensure unique VLAN IDs
+        vlans = [...new Set(vlanResult.vlans.map(vlan => vlan.vlanId))];
+        logger.info(`[SNMP] Discovered ${vlans.length} unique VLANs for MAC address lookup: ${vlans.join(', ')}`);
       } catch (error) {
         logger.error(`[SNMP] Failed to discover VLANs: ${error.message}. Will use default VLAN 1`);
         vlans = [1]; // Default to VLAN 1 if VLAN discovery fails
@@ -61,9 +63,18 @@ exports.discoverMacAddresses = async (req, res) => {
     
     // Results storage
     const macAddresses = [];
+    const processedVlans = new Set(); // Keep track of processed VLANs
     
-    // Execute a targeted walk for each VLAN
+    // Execute a targeted walk for each VLAN, but only once per VLAN
     for (const vlan of vlans) {
+      // Skip if we've already processed this VLAN
+      if (processedVlans.has(vlan)) {
+        logger.info(`[SNMP] Skipping already processed VLAN ${vlan}`);
+        continue;
+      }
+      
+      processedVlans.add(vlan); // Mark this VLAN as processed
+      
       try {
         // Create community string with VLAN ID as per the requested format: "public@101"
         const vlanCommunity = vlan === 1 ? community : `${community}@${vlan}`;
@@ -98,19 +109,20 @@ exports.discoverMacAddresses = async (req, res) => {
     const seenMacs = new Set();
     
     macAddresses.forEach(mac => {
-      if (!seenMacs.has(mac.macAddress)) {
-        seenMacs.add(mac.macAddress);
+      const key = `${mac.macAddress}-${mac.vlanId}`; // Create unique key with MAC + VLAN
+      if (!seenMacs.has(key)) {
+        seenMacs.add(key);
         uniqueMacs.push(mac);
       }
     });
     
-    logger.info(`[SNMP] MAC address discovery complete, found ${uniqueMacs.length} unique MAC addresses across ${vlans.length} VLANs`);
+    logger.info(`[SNMP] MAC address discovery complete, found ${uniqueMacs.length} unique MAC addresses across ${processedVlans.size} VLANs`);
     
     // Return results
     res.json({
       status: 'success',
       macAddresses: uniqueMacs,
-      vlanIds: vlans
+      vlanIds: Array.from(processedVlans) // Return processed VLANs
     });
   } catch (error) {
     logger.error('[SNMP] MAC address discovery error:', error);

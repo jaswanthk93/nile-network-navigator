@@ -94,15 +94,18 @@ export async function discoverMacAddresses(
       vlanIds = [1];
     }
 
-    console.log(`Starting MAC address discovery with ${vlanIds.length} VLANs: ${vlanIds.join(', ')}`);
+    // Ensure we only have unique VLAN IDs
+    const uniqueVlanIds = [...new Set(vlanIds)];
+    
+    console.log(`Starting MAC address discovery with ${uniqueVlanIds.length} unique VLANs: ${uniqueVlanIds.join(', ')}`);
     
     if (progressCallback) {
-      progressCallback(`Using ${vlanIds.length} VLANs for MAC address discovery...`, 10);
+      progressCallback(`Using ${uniqueVlanIds.length} VLANs for MAC address discovery...`, 10);
     }
 
     try {
       // Call backend API directly with detailed logging
-      console.log(`Calling backend API for MAC address discovery with VLANs: ${vlanIds.join(', ')}`);
+      console.log(`Calling backend API for MAC address discovery with VLANs: ${uniqueVlanIds.join(', ')}`);
       
       // Double check the endpoint is correct and add more detailed logging
       const endpoint = "/snmp/discover-mac-addresses";
@@ -112,7 +115,7 @@ export async function discoverMacAddresses(
         ip,
         community,
         version,
-        vlanIds
+        vlanIds: uniqueVlanIds
       };
       
       console.log(`Request data for MAC discovery:`, JSON.stringify(requestData, null, 2));
@@ -132,7 +135,7 @@ export async function discoverMacAddresses(
       // Ensure we return a properly formatted result even if backend returns unexpected data
       return {
         macAddresses: result.macAddresses || [],
-        vlanIds: result.vlanIds || vlanIds
+        vlanIds: result.vlanIds || uniqueVlanIds
       };
     } catch (error) {
       console.error("Error in MAC address discovery:", error);

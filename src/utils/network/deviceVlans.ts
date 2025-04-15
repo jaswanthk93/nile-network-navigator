@@ -64,9 +64,34 @@ export async function getVlansFromSwitch(
     if (deviceHostname) {
       console.log(`Updating any existing Switch devices with hostname ${deviceHostname} for IP ${ip}`);
       
+      // First get the existing device record to preserve any user-defined settings
+      const { data: existingDevice, error: getDeviceError } = await supabase
+        .from('devices')
+        .select('*')
+        .eq('ip_address', ip)
+        .eq('site_id', siteId)
+        .eq('category', 'Switch')
+        .single();
+        
+      if (getDeviceError && getDeviceError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+        console.error("Error getting existing device:", getDeviceError);
+      }
+      
+      const updatePayload = {
+        hostname: deviceHostname, // Always use the SNMP-discovered hostname
+        needs_verification: false,
+        confirmed: true
+      };
+      
+      // If we have an existing device with sysDescr, make sure to preserve it
+      if (existingDevice?.sysdescr) {
+        console.log(`Preserving existing sysDescr for device at ${ip}`);
+        updatePayload.sysdescr = existingDevice.sysdescr;
+      }
+      
       const { error: updateDeviceError } = await supabase
         .from('devices')
-        .update({ hostname: deviceHostname, needs_verification: false, confirmed: true })
+        .update(updatePayload)
         .eq('ip_address', ip)
         .eq('site_id', siteId)
         .eq('category', 'Switch');
