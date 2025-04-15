@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -351,27 +352,79 @@ const VlansPage = () => {
     try {
       setLoading(true);
 
+      // Check if we have a site ID in localStorage
       let siteId = localStorage.getItem('currentSiteId');
       
       if (!siteId) {
-        console.log("No site ID found in localStorage, creating a default site");
+        console.log("No site ID found in localStorage, checking for existing sites");
         
-        const { data: newSite, error: siteError } = await supabase
+        // First check if the user already has any sites
+        const { data: existingSites, error: sitesError } = await supabase
           .from('sites')
-          .insert({
-            name: 'Default Site',
-            user_id: user!.id
-          })
           .select('id')
-          .single();
+          .eq('user_id', user!.id)
+          .limit(1);
           
-        if (siteError) {
-          throw new Error(`Error creating default site: ${siteError.message}`);
+        if (sitesError) {
+          throw new Error(`Error checking for existing sites: ${sitesError.message}`);
         }
         
-        siteId = newSite.id;
-        localStorage.setItem('currentSiteId', siteId);
-        console.log(`Created default site with ID: ${siteId}`);
+        if (existingSites && existingSites.length > 0) {
+          // Use the first existing site
+          siteId = existingSites[0].id;
+          localStorage.setItem('currentSiteId', siteId);
+          console.log(`Using existing site with ID: ${siteId}`);
+        } else {
+          // Create a default site if none exists
+          console.log("No existing sites found, creating a default site");
+          
+          const { data: newSite, error: siteError } = await supabase
+            .from('sites')
+            .insert({
+              name: 'Default Site',
+              user_id: user!.id
+            })
+            .select('id')
+            .single();
+            
+          if (siteError) {
+            throw new Error(`Error creating default site: ${siteError.message}`);
+          }
+          
+          siteId = newSite.id;
+          localStorage.setItem('currentSiteId', siteId);
+          console.log(`Created default site with ID: ${siteId}`);
+        }
+      } else {
+        // Verify that the site ID actually exists in the database
+        const { data: siteCheck, error: siteCheckError } = await supabase
+          .from('sites')
+          .select('id')
+          .eq('id', siteId)
+          .eq('user_id', user!.id)
+          .single();
+          
+        if (siteCheckError || !siteCheck) {
+          console.log("Site ID in localStorage doesn't exist in the database, creating a new one");
+          
+          // Create a new default site
+          const { data: newSite, error: siteError } = await supabase
+            .from('sites')
+            .insert({
+              name: 'Default Site',
+              user_id: user!.id
+            })
+            .select('id')
+            .single();
+            
+          if (siteError) {
+            throw new Error(`Error creating default site: ${siteError.message}`);
+          }
+          
+          siteId = newSite.id;
+          localStorage.setItem('currentSiteId', siteId);
+          console.log(`Created default site with ID: ${siteId}`);
+        }
       }
 
       const vlansToSave = vlans.map(vlan => {
