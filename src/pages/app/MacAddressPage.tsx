@@ -316,10 +316,7 @@ const MacAddressPage = () => {
               
               const { error: saveError } = await supabase
                 .from('mac_addresses')
-                .upsert(macAddressRecord, {
-                  onConflict: 'mac_address,vlan_id,site_id',
-                  ignoreDuplicates: false
-                });
+                .upsert(macAddressRecord);
                 
               if (saveError) {
                 console.error("Error saving MAC address to database:", saveError);
