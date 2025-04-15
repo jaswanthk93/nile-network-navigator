@@ -130,7 +130,25 @@ export async function discoverMacAddresses(
         progressCallback(`MAC address discovery complete. Found ${result.macAddresses?.length || 0} MAC addresses.`, 100);
       }
       
-      console.log(`MAC address discovery complete. Found ${result.macAddresses?.length || 0} MAC addresses.`);
+      console.log(`MAC address discovery complete. Found ${result.macAddresses?.length || 0} MAC addresses across ${result.vlanIds?.length || 0} VLANs.`);
+      
+      if (result.macAddresses?.length > 0) {
+        // Log a sample of discovered MAC addresses (up to 5)
+        const sampleMacs = result.macAddresses.slice(0, 5);
+        console.log(`Sample of discovered MAC addresses:`, sampleMacs);
+        
+        // Log counts by VLAN
+        const macsByVlan = new Map<number, number>();
+        result.macAddresses.forEach(mac => {
+          const count = macsByVlan.get(mac.vlanId) || 0;
+          macsByVlan.set(mac.vlanId, count + 1);
+        });
+        
+        console.log(`MAC addresses by VLAN:`);
+        macsByVlan.forEach((count, vlanId) => {
+          console.log(`VLAN ${vlanId}: ${count} MAC addresses`);
+        });
+      }
       
       // Ensure we return a properly formatted result even if backend returns unexpected data
       return {
