@@ -1,4 +1,3 @@
-
 /**
  * SNMP Discovery utilities for device information retrieval
  */
@@ -85,7 +84,6 @@ export async function discoverMacAddresses(
   macAddresses: Array<{
     macAddress: string;
     vlanId: number;
-    port?: string;
     deviceType: string;
   }>;
   vlanIds: number[];

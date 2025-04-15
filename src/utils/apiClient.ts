@@ -1,4 +1,3 @@
-
 import { DiscoveredVlan } from "../types/network";
 
 // Configuration for the agent
@@ -146,8 +145,6 @@ export async function discoverMacAddressesWithSNMP(
   macAddresses: Array<{
     macAddress: string;
     vlanId: number;
-    port: string;
-    status: string;
     deviceType: string;
   }>;
   vlanIds: number[];

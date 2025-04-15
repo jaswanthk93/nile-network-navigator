@@ -15,8 +15,6 @@ export interface DiscoveredVlan {
 export interface DiscoveredMacAddress {
   macAddress: string;
   vlanId: number;
-  port?: string;
-  status: "authenticated" | "unauthenticated" | "unknown";
   deviceType: string;
   selected?: boolean;
 }

@@ -7,13 +7,8 @@ const vlanHandler = require('../vlanHandler');
  * OIDs for MAC address discovery
  */
 const MAC_OIDS = {
-  // Bridge MIB - MAC to port mapping (this is the specific OID requested)
-  bridgeMacToPort: '1.3.6.1.2.1.17.4.3.1.2',     // dot1dTpFdbPort
-  
-  // Interface MIB - interface information
-  bridgePortToIfIndex: '1.3.6.1.2.1.17.1.4.1.2', // dot1dBasePortIfIndex
-  ifName: '1.3.6.1.2.1.31.1.1.1.1',              // ifName (IF-MIB)
-  ifDesc: '1.3.6.1.2.1.2.2.1.2'                  // ifDescr
+  // Bridge MIB - MAC to port mapping (targeted OID for MAC address table)
+  bridgeMacToPort: '1.3.6.1.2.1.17.4.3.1.2'  // dot1dTpFdbPort
 };
 
 /**
@@ -57,10 +52,9 @@ exports.discoverMacAddresses = async (req, res) => {
     // Execute a targeted walk for each VLAN
     for (const vlan of vlans) {
       try {
-        // Create a new SNMP session with VLAN-specific community string for each VLAN
-        // This implements the exact format: "public@101" as requested
+        // Create community string with VLAN ID as per the requested format: "public@101"
         const vlanCommunity = vlan === 1 ? community : `${community}@${vlan}`;
-        logger.info(`[SNMP] Executing targeted walk for VLAN ${vlan} using community string "${vlanCommunity}"`);
+        logger.info(`[SNMP] Executing targeted walk for VLAN ${vlan} using community string "${vlanCommunity}" and OID ${MAC_OIDS.bridgeMacToPort}`);
         
         // Create a new session for this specific VLAN
         const snmpVersion = version === '1' ? snmp.Version1 : snmp.Version2c;
@@ -70,70 +64,8 @@ exports.discoverMacAddresses = async (req, res) => {
           timeout: 5000
         });
         
-        // We need to get interface information first to correlate ports with interface names
-        const portToIfIndexMap = {};
-        const ifIndexToNameMap = {};
-        
-        // Map bridge ports to interface indices
-        try {
-          logger.info(`[SNMP] Getting bridge port to interface index mapping for VLAN ${vlan}`);
-          await walkOid(session, MAC_OIDS.bridgePortToIfIndex, (oid, bridgePort, ifIndex) => {
-            const portNumber = oid.split('.').pop();
-            portToIfIndexMap[portNumber] = ifIndex;
-          });
-          logger.info(`[SNMP] Found ${Object.keys(portToIfIndexMap).length} port mappings for VLAN ${vlan}`);
-        } catch (error) {
-          logger.warn(`[SNMP] Error getting port mappings for VLAN ${vlan}: ${error.message}`);
-        }
-        
-        // Get interface names
-        try {
-          logger.info(`[SNMP] Getting interface names for VLAN ${vlan}`);
-          await walkOid(session, MAC_OIDS.ifName, (oid, ifIndex, ifName) => {
-            ifIndex = oid.split('.').pop();
-            ifIndexToNameMap[ifIndex] = ifName.toString();
-          });
-          
-          // If we couldn't get ifName, try ifDescr as fallback
-          if (Object.keys(ifIndexToNameMap).length === 0) {
-            logger.info(`[SNMP] No interface names found for VLAN ${vlan}, trying interface descriptions`);
-            await walkOid(session, MAC_OIDS.ifDesc, (oid, ifIndex, ifDesc) => {
-              ifIndex = oid.split('.').pop();
-              ifIndexToNameMap[ifIndex] = ifDesc.toString();
-            });
-          }
-          logger.info(`[SNMP] Found ${Object.keys(ifIndexToNameMap).length} interface names for VLAN ${vlan}`);
-        } catch (error) {
-          logger.warn(`[SNMP] Error getting interface names for VLAN ${vlan}: ${error.message}`);
-        }
-        
-        // Execute the specific targeted walk for the MAC address table
-        // This is the exact OID mentioned in the example: 1.3.6.1.2.1.17.4.3.1.2
-        logger.info(`[SNMP] Executing targeted walk for MAC addresses on VLAN ${vlan} using OID ${MAC_OIDS.bridgeMacToPort}`);
-        await walkOid(session, MAC_OIDS.bridgeMacToPort, (oid, macOidSuffix, bridgePort) => {
-          // Extract MAC from OID
-          const macParts = oid.replace(`${MAC_OIDS.bridgeMacToPort}.`, '').split('.');
-          if (macParts.length === 6) {
-            const mac = macParts.map(p => parseInt(p).toString(16).padStart(2, '0')).join(':').toUpperCase();
-            
-            // Get interface index from bridge port
-            const ifIndex = portToIfIndexMap[bridgePort];
-            
-            // Get interface name
-            const ifName = ifIndexToNameMap[ifIndex] || `Port ${bridgePort}`;
-            
-            // Add to results
-            macAddresses.push({
-              macAddress: mac,
-              vlanId: vlan,
-              port: ifName,
-              status: 'authenticated', // Default status
-              deviceType: getMacDeviceType(mac)
-            });
-            
-            logger.info(`[SNMP] Found MAC ${mac} on VLAN ${vlan}, port ${ifName}`);
-          }
-        });
+        // Execute the specifically targeted walk for the MAC address table
+        await walkMacAddressTable(session, MAC_OIDS.bridgeMacToPort, vlan, macAddresses);
         
         // Close this VLAN-specific session
         try {
@@ -174,17 +106,15 @@ exports.discoverMacAddresses = async (req, res) => {
 };
 
 /**
- * Helper function to walk an OID and process results
+ * Walk the MAC address table (dot1dTpFdbPort) for a specific VLAN
  */
-function walkOid(session, oid, callback) {
+function walkMacAddressTable(session, oid, vlanId, macAddresses) {
   return new Promise((resolve, reject) => {
-    const results = {};
-    
     function doneCb(error) {
       if (error) {
         return reject(error);
       }
-      resolve(results);
+      resolve();
     }
     
     function feedCb(varbinds) {
@@ -192,28 +122,23 @@ function walkOid(session, oid, callback) {
         if (snmp.isVarbindError(varbind)) {
           logger.warn(`SNMP walk varbind error: ${snmp.varbindError(varbind)}`);
         } else {
-          const value = varbind.value;
           const oid = varbind.oid;
-          let parsedValue;
+          const bridgePort = varbind.value;
           
-          // Convert Buffer to appropriate JavaScript type
-          if (Buffer.isBuffer(value)) {
-            if (varbind.type === snmp.ObjectType.OctetString) {
-              parsedValue = value.toString();
-            } else {
-              parsedValue = parseInt(value.toString('hex'), 16);
-            }
-          } else {
-            parsedValue = value;
+          // Extract MAC from OID
+          const macParts = oid.replace(`${MAC_OIDS.bridgeMacToPort}.`, '').split('.');
+          if (macParts.length === 6) {
+            const mac = macParts.map(p => parseInt(p).toString(16).padStart(2, '0')).join(':').toUpperCase();
+            
+            // Add to results - without port/interface information
+            macAddresses.push({
+              macAddress: mac,
+              vlanId: vlanId,
+              deviceType: getMacDeviceType(mac)
+            });
+            
+            logger.info(`[SNMP] Found MAC ${mac} on VLAN ${vlanId}`);
           }
-          
-          results[oid] = parsedValue;
-          
-          // Extract the suffix (the part after the base OID)
-          const suffix = oid.replace(`${oid}.`, '');
-          
-          // Call the callback with the OID, suffix, and parsed value
-          callback(oid, suffix, parsedValue);
         }
       }
     }
