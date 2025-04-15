@@ -44,10 +44,12 @@ const MacAddressPage = () => {
       setLoading(true);
       setError(null);
       
-      const selectedSiteId = sessionStorage.getItem('selectedSiteId');
+      const params = new URLSearchParams(location.search);
+      const siteIdFromUrl = params.get('site');
+      const selectedSiteId = siteIdFromUrl || sessionStorage.getItem('selectedSiteId');
       
       if (!selectedSiteId) {
-        console.error("No site ID found in session storage");
+        console.error("No site ID found in URL or session storage");
         setError("No site selected. Please select a site from the sidebar first.");
         setLoading(false);
         toast({
@@ -58,7 +60,7 @@ const MacAddressPage = () => {
         return;
       }
       
-      console.log(`Using site ID from session storage: ${selectedSiteId}`);
+      console.log(`Using site ID: ${selectedSiteId} (from ${siteIdFromUrl ? 'URL' : 'session storage'})`);
       
       const { data: vlans, error: vlansError } = await supabase
         .from('vlans')
@@ -88,7 +90,7 @@ const MacAddressPage = () => {
           description: "You need to discover VLANs first before discovering MAC addresses.",
           variant: "destructive",
         });
-        navigate('/vlans');
+        navigate(`/vlans?site=${selectedSiteId}`);
         return;
       }
       
@@ -119,7 +121,7 @@ const MacAddressPage = () => {
           description: "Network information is missing. Please complete network discovery first.",
           variant: "destructive",
         });
-        navigate('/site-subnet');
+        navigate(`/site-subnet?site=${selectedSiteId}`);
         return;
       }
       
@@ -151,7 +153,7 @@ const MacAddressPage = () => {
           description: "No switch device found in the network. Please complete device discovery first.",
           variant: "destructive",
         });
-        navigate('/devices');
+        navigate(`/devices?site=${selectedSiteId}`);
         return;
       }
       
@@ -160,7 +162,7 @@ const MacAddressPage = () => {
       const community = subnet.snmp_community || 'public';
       const version = subnet.snmp_version || '2c';
       
-      console.log(`Using switch ${switchIp} with community ${community} and version ${version}`);
+      console.log(`Using switch ${switchIp} with community ${community} and version ${version} for site ${selectedSiteId}`);
       
       toast({
         title: "Discovering MAC Addresses",
@@ -172,11 +174,11 @@ const MacAddressPage = () => {
         community,
         version,
         (message: string, progress: number) => {
-          console.log(message);
+          console.log(`MAC discovery progress: ${message} (${progress}%)`);
         }
       );
       
-      console.log(`Discovered ${macAddressResults.macAddresses.length} MAC addresses across ${macAddressResults.vlanIds.length} VLANs`);
+      console.log(`Discovered ${macAddressResults.macAddresses.length} MAC addresses across ${macAddressResults.vlanIds.length} VLANs for site ${selectedSiteId}`);
       
       const vlanMap = new Map();
       vlans.forEach(vlan => {
@@ -223,8 +225,19 @@ const MacAddressPage = () => {
   };
 
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const siteIdFromUrl = params.get('site');
+    
+    if (siteIdFromUrl) {
+      const currentSiteId = sessionStorage.getItem('selectedSiteId');
+      if (siteIdFromUrl !== currentSiteId) {
+        console.log(`Updating selectedSiteId in session storage from URL: ${siteIdFromUrl}`);
+        sessionStorage.setItem('selectedSiteId', siteIdFromUrl);
+      }
+    }
+    
     fetchMacAddresses();
-  }, [user, navigate, toast]);
+  }, [user, location.search, navigate, toast]);
 
   const filteredMacAddresses = macAddresses.filter(mac => {
     const matchesSearch = mac.macAddress.toLowerCase().includes(searchTerm.toLowerCase()) || 

@@ -105,6 +105,13 @@ export async function discoverMacAddresses(
     
     console.log('MAC Address discovery results:', result);
     
+    if (!result.macAddresses || result.macAddresses.length === 0) {
+      console.warn('No MAC addresses found during discovery. This might indicate an SNMP configuration issue or a switch that does not support the necessary MIBs.');
+    } else {
+      console.log(`Successfully discovered ${result.macAddresses.length} MAC addresses across ${result.vlanIds.length} VLANs.`);
+      console.log(`VLAN IDs found: ${result.vlanIds.join(', ')}`);
+    }
+    
     return result;
   } catch (error) {
     console.error(`Error discovering MAC addresses on ${ipAddress}:`, error);

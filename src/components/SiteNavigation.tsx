@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -43,8 +44,21 @@ export function SiteNavigation() {
         
         // Only auto-select a site if we're not in new site creation mode
         // and no site is currently selected
-        if (data?.length > 0 && !isCreatingNewSite && !sessionStorage.getItem('selectedSiteId')) {
+        const currentSiteId = sessionStorage.getItem('selectedSiteId');
+        if (data?.length > 0 && !isCreatingNewSite && !currentSiteId) {
+          console.log(`Auto-selecting the first site: ${data[0].id} (${data[0].name})`);
           sessionStorage.setItem('selectedSiteId', data[0].id);
+          setOpenSiteId(data[0].id);
+        } else if (currentSiteId) {
+          // If a site is already selected, validate that it exists in the user's sites
+          const siteExists = data?.some(site => site.id === currentSiteId);
+          if (!siteExists && data?.length > 0) {
+            console.log(`Selected site ${currentSiteId} not found in user's sites, auto-selecting first site: ${data[0].id}`);
+            sessionStorage.setItem('selectedSiteId', data[0].id);
+            setOpenSiteId(data[0].id);
+          } else if (siteExists) {
+            setOpenSiteId(currentSiteId);
+          }
         }
       } catch (error) {
         console.error('Error fetching sites:', error);
@@ -78,8 +92,15 @@ export function SiteNavigation() {
     const currentSiteId = siteIdFromUrl || sessionStorage.getItem('selectedSiteId');
     
     if (currentSiteId) {
+      console.log(`Setting open site ID from URL or session storage: ${currentSiteId}`);
       setOpenSiteId(currentSiteId);
       setIsCreatingNewSite(false);
+      
+      // Update session storage to ensure consistency
+      if (siteIdFromUrl && siteIdFromUrl !== sessionStorage.getItem('selectedSiteId')) {
+        console.log(`Updating session storage with site ID from URL: ${siteIdFromUrl}`);
+        sessionStorage.setItem('selectedSiteId', siteIdFromUrl);
+      }
     }
   }, [location.pathname, location.search, isCreatingNewSite]);
 

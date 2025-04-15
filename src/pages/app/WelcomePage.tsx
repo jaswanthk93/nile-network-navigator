@@ -66,6 +66,7 @@ const WelcomePage = () => {
         
         if (!sitesData || sitesData.length === 0) {
           setIsLoading(false);
+          sessionStorage.removeItem('selectedSiteId');
           return;
         }
         
@@ -117,24 +118,6 @@ const WelcomePage = () => {
                 if (vlanCount && vlanCount > 0) {
                   progress = 85;
                   label = "VLAN configuration complete";
-                  
-                  // For now, we'll skip the MAC addresses check since the table doesn't exist yet
-                  // When the mac_addresses table is created, this code can be uncommented
-                  /*
-                  const { count: macCount, error: macError } = await supabase
-                    .from('mac_addresses')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('site_id', site.id);
-                    
-                  if (macError) throw macError;
-                  
-                  if (macCount && macCount > 0) {
-                    progress = 95;
-                    label = "MAC address collection complete";
-                  }
-                  */
-                  
-                  // For now, simply assume that after VLANs, the user is ready for export
                   progress = 95;
                   label = "Ready for export";
                 }
@@ -152,6 +135,19 @@ const WelcomePage = () => {
         }));
         
         setSites(sitesWithStatus);
+        
+        const selectedSiteId = sessionStorage.getItem('selectedSiteId');
+        
+        if (!selectedSiteId && sitesWithStatus.length > 0) {
+          console.log(`Auto-selecting first site: ${sitesWithStatus[0].id} (${sitesWithStatus[0].name})`);
+          sessionStorage.setItem('selectedSiteId', sitesWithStatus[0].id);
+        } else if (selectedSiteId) {
+          const siteExists = sitesWithStatus.some(site => site.id === selectedSiteId);
+          if (!siteExists && sitesWithStatus.length > 0) {
+            console.log(`Selected site ${selectedSiteId} not found, auto-selecting first site: ${sitesWithStatus[0].id}`);
+            sessionStorage.setItem('selectedSiteId', sitesWithStatus[0].id);
+          }
+        }
       } catch (error) {
         console.error("Error fetching sites:", error);
       } finally {
@@ -163,14 +159,11 @@ const WelcomePage = () => {
   }, [user]);
 
   const handleCreateNewSite = () => {
-    // Clear any existing site data
     sessionStorage.removeItem('selectedSiteId');
     sessionStorage.removeItem('subnetIds');
     
-    // Set the creation flag
     localStorage.setItem('creatingNewSite', 'true');
     
-    // Navigate to site creation with a timestamp to force reload
     navigate(`/site-subnet?new=${Date.now()}`);
     
     toast({
