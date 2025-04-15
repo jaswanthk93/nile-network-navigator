@@ -1,21 +1,50 @@
-
 /**
  * Subnet scanning strategies for different network sizes
  */
 
 import { simulatePingAndARPLookup } from "./ipUtils";
+import { getDeviceInfoViaSNMP } from "./snmpDiscovery";
 
 /**
  * Scan a single network device
  */
-export async function scanNetworkDevice(ip: string): Promise<{isReachable: boolean, macAddress?: string}> {
-  // Simulate a ping to check if device is reachable
-  const pingResult = simulatePingAndARPLookup(ip, "192.168.1.1", 24); // Use default values for local IP and mask
-  
-  return {
-    isReachable: pingResult.reachable,
-    macAddress: pingResult.macAddress
-  };
+export async function scanNetworkDevice(
+  ip: string, 
+  updateProgress?: (message: string, progress: number) => void
+): Promise<{isReachable: boolean, macAddress?: string}> {
+  try {
+    if (updateProgress) {
+      updateProgress(`Testing connectivity to ${ip}...`, 10);
+    }
+    
+    // First try SNMP walk as a validation
+    const snmpTest = await getDeviceInfoViaSNMP(ip, updateProgress, true);
+    
+    // If SNMP responds, device is definitely reachable
+    if (snmpTest && !snmpTest.error) {
+      console.log(`Device ${ip} responded to SNMP validation`);
+      return {
+        isReachable: true,
+        macAddress: null // MAC will be determined later in the discovery process
+      };
+    }
+    
+    // If SNMP fails, fall back to simulated ping for now
+    // In production, this would be a real ping
+    console.log(`SNMP validation failed for ${ip}, falling back to ping simulation`);
+    const pingResult = simulatePingAndARPLookup(ip, "192.168.1.1", 24);
+    
+    return {
+      isReachable: pingResult.reachable,
+      macAddress: pingResult.macAddress
+    };
+  } catch (error) {
+    console.error(`Error scanning device ${ip}:`, error);
+    return {
+      isReachable: false,
+      macAddress: undefined
+    };
+  }
 }
 
 /**

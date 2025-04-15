@@ -1,4 +1,3 @@
-
 import { DiscoveredDevice } from "@/types/network";
 import * as ipUtils from "./ipUtils";
 import * as deviceIdentification from "./deviceIdentification";
@@ -20,9 +19,10 @@ export async function discoverIP(
   try {
     console.log(`Discovering IP: ${ipAddress}`);
     
-    // Initial device scan
-    const initialScan = await scanNetworkDevice(ipAddress);
+    // Initial device scan with connectivity test
+    const initialScan = await scanNetworkDevice(ipAddress, updateProgress);
     if (!initialScan.isReachable) {
+      console.log(`Device ${ipAddress} is not reachable`);
       return null;
     }
     
