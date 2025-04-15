@@ -1,11 +1,14 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
 import { ShareIcon, FileDown, CheckIcon, TableIcon, EyeIcon, CodeIcon } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ExportData {
   macAddress: string;
@@ -17,59 +20,116 @@ interface ExportData {
   allowOrDeny: "allow";
 }
 
-const mockExportData: ExportData[] = [
-  {
-    macAddress: "00:1A:2B:3C:4D:5E",
-    segmentName: "Employee",
-    lockToPort: "",
-    site: "",
-    building: "",
-    floor: "",
-    allowOrDeny: "allow"
-  },
-  {
-    macAddress: "AA:BB:CC:DD:EE:FF",
-    segmentName: "Employee",
-    lockToPort: "",
-    site: "",
-    building: "",
-    floor: "",
-    allowOrDeny: "allow"
-  },
-  {
-    macAddress: "11:22:33:44:55:66",
-    segmentName: "Voice",
-    lockToPort: "",
-    site: "",
-    building: "",
-    floor: "",
-    allowOrDeny: "allow"
-  },
-  {
-    macAddress: "DD:EE:FF:00:11:22",
-    segmentName: "IoT",
-    lockToPort: "",
-    site: "",
-    building: "",
-    floor: "",
-    allowOrDeny: "allow"
-  },
-  {
-    macAddress: "99:88:77:66:55:44",
-    segmentName: "IoT",
-    lockToPort: "",
-    site: "",
-    building: "",
-    floor: "",
-    allowOrDeny: "allow"
-  }
-];
-
 const ExportPage = () => {
-  const [exportData, setExportData] = useState<ExportData[]>(mockExportData);
+  const [exportData, setExportData] = useState<ExportData[]>([]);
   const [exportComplete, setExportComplete] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+
+  // Get site ID from URL or session storage
+  useEffect(() => {
+    if (!user) return;
+
+    const params = new URLSearchParams(location.search);
+    const siteIdFromUrl = params.get('site');
+    const storedSiteId = sessionStorage.getItem('selectedSiteId');
+    
+    const siteId = siteIdFromUrl || storedSiteId;
+    
+    if (siteId) {
+      setSelectedSiteId(siteId);
+      if (siteId !== storedSiteId) {
+        sessionStorage.setItem('selectedSiteId', siteId);
+      }
+    } else {
+      setError("No site selected. Please select a site from the sidebar first.");
+      toast({
+        title: "No Site Selected",
+        description: "Please select a site from the sidebar first.",
+        variant: "destructive",
+      });
+    }
+  }, [location.search, toast, user]);
+
+  // Fetch MAC addresses from the database
+  useEffect(() => {
+    const fetchMacAddresses = async () => {
+      if (!user || !selectedSiteId) return;
+      
+      try {
+        setLoading(true);
+        
+        // First get VLANs to map IDs to names
+        const { data: vlans, error: vlansError } = await supabase
+          .from('vlans')
+          .select('*')
+          .eq('site_id', selectedSiteId);
+          
+        if (vlansError) {
+          throw new Error(`Error fetching VLANs: ${vlansError.message}`);
+        }
+        
+        // Create a map of VLAN IDs to names
+        const vlanMap = new Map();
+        vlans?.forEach(vlan => {
+          vlanMap.set(vlan.vlan_id, vlan.name || `VLAN ${vlan.vlan_id}`);
+        });
+        
+        // Fetch MAC addresses from the database
+        const { data: macAddresses, error: macError } = await supabase
+          .from('mac_addresses')
+          .select('*')
+          .eq('site_id', selectedSiteId)
+          .eq('is_active', true);
+          
+        if (macError) {
+          throw new Error(`Error fetching MAC addresses: ${macError.message}`);
+        }
+        
+        if (!macAddresses || macAddresses.length === 0) {
+          setError("No MAC addresses found. Please discover devices first.");
+          setLoading(false);
+          toast({
+            title: "No MAC Addresses",
+            description: "No MAC addresses found for export. Please discover devices first.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        // Transform data for export
+        const transformedData: ExportData[] = macAddresses.map(mac => ({
+          macAddress: mac.mac_address,
+          segmentName: vlanMap.get(mac.vlan_id) || `VLAN ${mac.vlan_id}`,
+          lockToPort: "",
+          site: "",
+          building: "",
+          floor: "",
+          allowOrDeny: "allow"
+        }));
+        
+        setExportData(transformedData);
+        setError(null);
+      } catch (error) {
+        console.error("Error fetching MAC addresses:", error);
+        setError(error instanceof Error ? error.message : "An unexpected error occurred");
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "An unexpected error occurred",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchMacAddresses();
+  }, [selectedSiteId, user, toast]);
 
   const handleExport = () => {
     setExportComplete(true);
@@ -80,18 +140,40 @@ const ExportPage = () => {
   };
 
   const downloadCsv = () => {
+    // Generate CSV content
+    const csvContent = getCSVContent();
+    
+    // Create a Blob and download link
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    
+    // Set up download attributes
+    link.setAttribute('href', url);
+    link.setAttribute('download', `nile-export-${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    
+    // Add to document, trigger click, and clean up
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
     toast({
       title: "CSV downloaded",
       description: "The CSV file has been downloaded to your device.",
     });
   };
 
-  const getCSVPreview = () => {
+  const getCSVContent = () => {
     let csvContent = "mac address,segment name,lock to port,site,building,floor,allow or deny\n";
     exportData.forEach(item => {
       csvContent += `${item.macAddress},${item.segmentName},${item.lockToPort},${item.site},${item.building},${item.floor},${item.allowOrDeny}\n`;
     });
     return csvContent;
+  };
+
+  const getCSVPreview = () => {
+    return getCSVContent();
   };
 
   return (
@@ -114,78 +196,103 @@ const ExportPage = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="preview">
-            <TabsList className="mb-4">
-              <TabsTrigger value="preview">
-                <TableIcon className="h-4 w-4 mr-2" />
-                Table Preview
-              </TabsTrigger>
-              <TabsTrigger value="csv">
-                <CodeIcon className="h-4 w-4 mr-2" />
-                CSV Preview
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="preview" className="space-y-4">
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>MAC Address</TableHead>
-                      <TableHead>Segment Name</TableHead>
-                      <TableHead>Lock to Port</TableHead>
-                      <TableHead>Site</TableHead>
-                      <TableHead>Building</TableHead>
-                      <TableHead>Floor</TableHead>
-                      <TableHead>Allow/Deny</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {exportData.map((item, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="font-mono">{item.macAddress}</TableCell>
-                        <TableCell>{item.segmentName}</TableCell>
-                        <TableCell>{item.lockToPort || "—"}</TableCell>
-                        <TableCell>{item.site || "—"}</TableCell>
-                        <TableCell>{item.building || "—"}</TableCell>
-                        <TableCell>{item.floor || "—"}</TableCell>
-                        <TableCell>{item.allowOrDeny}</TableCell>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : error ? (
+            <div className="bg-destructive/10 text-destructive p-4 rounded-md">
+              <p>{error}</p>
+              <Button variant="outline" size="sm" className="mt-2" onClick={() => navigate('/mac-addresses')}>
+                Go to MAC Addresses
+              </Button>
+            </div>
+          ) : (
+            <Tabs defaultValue="preview">
+              <TabsList className="mb-4">
+                <TabsTrigger value="preview">
+                  <TableIcon className="h-4 w-4 mr-2" />
+                  Table Preview
+                </TabsTrigger>
+                <TabsTrigger value="csv">
+                  <CodeIcon className="h-4 w-4 mr-2" />
+                  CSV Preview
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="preview" className="space-y-4">
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>MAC Address</TableHead>
+                        <TableHead>Segment Name</TableHead>
+                        <TableHead>Lock to Port</TableHead>
+                        <TableHead>Site</TableHead>
+                        <TableHead>Building</TableHead>
+                        <TableHead>Floor</TableHead>
+                        <TableHead>Allow/Deny</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <div className="text-sm text-muted-foreground">
-                <p>Total records: {exportData.length}</p>
-              </div>
-            </TabsContent>
-            <TabsContent value="csv">
-              <div className="rounded-md border bg-muted p-4">
-                <pre className="text-xs overflow-x-auto whitespace-pre-wrap">
-                  {getCSVPreview()}
-                </pre>
-              </div>
-            </TabsContent>
-          </Tabs>
+                    </TableHeader>
+                    <TableBody>
+                      {exportData.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-4 text-muted-foreground">
+                            No MAC addresses found for export
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        exportData.map((item, index) => (
+                          <TableRow key={index}>
+                            <TableCell className="font-mono">{item.macAddress}</TableCell>
+                            <TableCell>{item.segmentName}</TableCell>
+                            <TableCell>{item.lockToPort || "—"}</TableCell>
+                            <TableCell>{item.site || "—"}</TableCell>
+                            <TableCell>{item.building || "—"}</TableCell>
+                            <TableCell>{item.floor || "—"}</TableCell>
+                            <TableCell>{item.allowOrDeny}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  <p>Total records: {exportData.length}</p>
+                </div>
+              </TabsContent>
+              <TabsContent value="csv">
+                <div className="rounded-md border bg-muted p-4">
+                  <pre className="text-xs overflow-x-auto whitespace-pre-wrap">
+                    {getCSVPreview()}
+                  </pre>
+                </div>
+              </TabsContent>
+            </Tabs>
+          )}
 
-          <div className="mt-6 space-y-4">
-            <div className="flex flex-col space-y-2">
-              <h3 className="text-lg font-medium">Nile Migration Summary</h3>
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-md border p-4">
-                  <div className="font-medium">Devices</div>
-                  <div className="mt-2 text-2xl font-bold">8</div>
-                </div>
-                <div className="rounded-md border p-4">
-                  <div className="font-medium">VLANs</div>
-                  <div className="mt-2 text-2xl font-bold">6</div>
-                </div>
-                <div className="rounded-md border p-4">
-                  <div className="font-medium">MAC Addresses</div>
-                  <div className="mt-2 text-2xl font-bold">{exportData.length}</div>
+          {!loading && !error && (
+            <div className="mt-6 space-y-4">
+              <div className="flex flex-col space-y-2">
+                <h3 className="text-lg font-medium">Nile Migration Summary</h3>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-md border p-4">
+                    <div className="font-medium">MAC Addresses</div>
+                    <div className="mt-2 text-2xl font-bold">{exportData.length}</div>
+                  </div>
+                  <div className="rounded-md border p-4">
+                    <div className="font-medium">Segments</div>
+                    <div className="mt-2 text-2xl font-bold">
+                      {new Set(exportData.map(item => item.segmentName)).size}
+                    </div>
+                  </div>
+                  <div className="rounded-md border p-4">
+                    <div className="font-medium">Status</div>
+                    <div className="mt-2 text-2xl font-bold text-green-600">Ready</div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </CardContent>
         <CardFooter className="flex justify-between border-t px-6 py-4">
           <Button 
@@ -195,22 +302,22 @@ const ExportPage = () => {
             Back
           </Button>
           <div className="space-x-2">
-            {!exportComplete ? (
-              <Button onClick={handleExport}>
+            {!loading && !error && !exportComplete ? (
+              <Button onClick={handleExport} disabled={exportData.length === 0}>
                 <ShareIcon className="h-4 w-4 mr-2" />
                 Export for Nile
               </Button>
-            ) : (
-              <Button onClick={downloadCsv}>
+            ) : !loading && !error && exportComplete ? (
+              <Button onClick={downloadCsv} disabled={exportData.length === 0}>
                 <FileDown className="h-4 w-4 mr-2" />
                 Download CSV
               </Button>
-            )}
+            ) : null}
           </div>
         </CardFooter>
       </Card>
 
-      {exportComplete && (
+      {!loading && !error && exportComplete && (
         <Card className="bg-green-50 border-green-200">
           <CardContent className="pt-6">
             <div className="flex items-start space-x-4">
