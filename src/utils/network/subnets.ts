@@ -47,24 +47,28 @@ export async function saveDiscoveredDevices(
       if (device.macAddresses && Array.isArray(device.macAddresses) && device.macAddresses.length > 0) {
         console.log(`Processing ${device.macAddresses.length} MAC addresses for device ${device.ip_address}`);
         
-        const macAddressRecords = device.macAddresses.map((mac: DiscoveredMacAddress) => ({
-          mac_address: mac.macAddress,
-          vlan_id: mac.vlanId,
-          device_type: mac.deviceType || 'Unknown',
-          site_id: siteId,
-          subnet_id: subnetId,
-          user_id: userId
-        }));
+        for (const mac of device.macAddresses) {
+          const macAddressRecord = {
+            mac_address: mac.macAddress,
+            vlan_id: mac.vlanId,
+            device_type: mac.deviceType || 'Unknown',
+            site_id: siteId,
+            subnet_id: subnetId,
+            user_id: userId
+          };
 
-        const { error: macError } = await supabase
-          .from('mac_addresses')
-          .insert(macAddressRecords)
-          .onConflict(['mac_address', 'vlan_id', 'site_id'])
-          .merge(['last_seen', 'is_active']);
-        
-        if (macError) {
-          console.error('Error inserting MAC addresses:', macError);
-          return { error: macError };
+          // Insert each MAC address individually to handle conflicts properly
+          const { error: macError } = await supabase
+            .from('mac_addresses')
+            .upsert(macAddressRecord, {
+              onConflict: 'mac_address,vlan_id,site_id',
+              ignoreDuplicates: false
+            });
+          
+          if (macError) {
+            console.error('Error inserting MAC address:', macError);
+            return { error: macError };
+          }
         }
       }
     }
