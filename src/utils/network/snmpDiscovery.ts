@@ -3,7 +3,8 @@
  * SNMP Discovery utilities for device information retrieval
  */
 
-import { discoverDeviceWithSNMP, discoverMacAddressesWithSNMP } from "@/utils/apiClient";
+import { discoverDeviceWithSNMP } from "@/utils/apiClient";
+import { discoverMacAddressesWithSNMP } from "@/utils/apiClient";
 
 /**
  * Use SNMP to get device information
@@ -101,6 +102,8 @@ export async function discoverMacAddresses(
     if (updateProgress) {
       updateProgress(`Found ${result.macAddresses.length} MAC addresses across ${result.vlanIds.length} VLANs`, 100);
     }
+    
+    console.log('MAC Address discovery results:', result);
     
     return result;
   } catch (error) {

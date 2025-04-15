@@ -60,6 +60,38 @@ const MacAddressPage = () => {
       
       console.log(`Using site ID from session storage: ${selectedSiteId}`);
       
+      const { data: vlans, error: vlansError } = await supabase
+        .from('vlans')
+        .select('*')
+        .eq('site_id', selectedSiteId);
+        
+      if (vlansError) {
+        console.error("Error fetching VLANs from database:", vlansError);
+        setError("Error fetching VLAN information. Please try again.");
+        setLoading(false);
+        toast({
+          title: "Error",
+          description: "Failed to load VLAN information.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      console.log(`Found ${vlans?.length || 0} VLANs in database for site ${selectedSiteId}`);
+      
+      if (!vlans || vlans.length === 0) {
+        console.error("No VLANs found in database for site:", selectedSiteId);
+        setError("No VLANs found. Please discover VLANs first.");
+        setLoading(false);
+        toast({
+          title: "No VLANs Found",
+          description: "You need to discover VLANs first before discovering MAC addresses.",
+          variant: "destructive",
+        });
+        navigate('/vlans');
+        return;
+      }
+      
       const { data: subnets, error: subnetsError } = await supabase
         .from('subnets')
         .select('*')
@@ -90,40 +122,6 @@ const MacAddressPage = () => {
         navigate('/site-subnet');
         return;
       }
-      
-      console.log(`Found ${subnets.length} subnets for site ${selectedSiteId}`);
-      
-      const { data: vlans, error: vlansError } = await supabase
-        .from('vlans')
-        .select('*')
-        .eq('site_id', selectedSiteId);
-        
-      if (vlansError) {
-        console.error("Error fetching VLANs:", vlansError);
-        setError("Error fetching VLAN information. Please try again.");
-        setLoading(false);
-        toast({
-          title: "Error",
-          description: "Failed to load VLAN information.",
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      if (!vlans || vlans.length === 0) {
-        console.error("No VLANs found for site:", selectedSiteId);
-        setError("No VLANs found. Please discover VLANs first.");
-        setLoading(false);
-        toast({
-          title: "No VLANs Found",
-          description: "You need to discover VLANs first before discovering MAC addresses.",
-          variant: "destructive",
-        });
-        navigate('/vlans');
-        return;
-      }
-      
-      console.log(`Found ${vlans.length} VLANs for site ${selectedSiteId}`);
       
       const { data: devices, error: devicesError } = await supabase
         .from('devices')
