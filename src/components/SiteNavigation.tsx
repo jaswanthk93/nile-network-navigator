@@ -25,39 +25,58 @@ export function SiteNavigation() {
   const location = useLocation();
   const [isCreatingNewSite, setIsCreatingNewSite] = useState(false);
 
-  // Fetch sites
+  // Fetch sites from database
   useEffect(() => {
     async function fetchSites() {
       if (!user) return;
       
       try {
         setIsLoading(true);
+        
+        console.log("SiteNavigation: Fetching sites for user:", user.id);
+        
         const { data, error } = await supabase
           .from('sites')
           .select('id, name')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
           
-        if (error) throw error;
+        if (error) {
+          console.error("Error fetching sites:", error);
+          throw error;
+        }
         
+        console.log(`SiteNavigation: Fetched ${data?.length || 0} sites for user ${user.id}`);
         setSites(data || []);
         
         // Only auto-select a site if we're not in new site creation mode
         // and no site is currently selected
-        const currentSiteId = sessionStorage.getItem('selectedSiteId');
-        if (data?.length > 0 && !isCreatingNewSite && !currentSiteId) {
-          console.log(`Auto-selecting the first site: ${data[0].id} (${data[0].name})`);
-          sessionStorage.setItem('selectedSiteId', data[0].id);
-          setOpenSiteId(data[0].id);
-        } else if (currentSiteId) {
-          // If a site is already selected, validate that it exists in the user's sites
-          const siteExists = data?.some(site => site.id === currentSiteId);
-          if (!siteExists && data?.length > 0) {
-            console.log(`Selected site ${currentSiteId} not found in user's sites, auto-selecting first site: ${data[0].id}`);
+        const params = new URLSearchParams(location.search);
+        const siteIdFromUrl = params.get('site');
+        const currentSiteId = siteIdFromUrl || sessionStorage.getItem('selectedSiteId');
+        
+        if (location.pathname === '/new-site') {
+          console.log("SiteNavigation: On new-site page, setting creation mode");
+          setIsCreatingNewSite(true);
+          setOpenSiteId(null);
+          sessionStorage.removeItem('selectedSiteId');
+        } else if (data?.length > 0 && !isCreatingNewSite) {
+          if (!currentSiteId) {
+            console.log(`SiteNavigation: Auto-selecting the first site: ${data[0].id} (${data[0].name})`);
             sessionStorage.setItem('selectedSiteId', data[0].id);
             setOpenSiteId(data[0].id);
-          } else if (siteExists) {
-            setOpenSiteId(currentSiteId);
+          } else {
+            // If a site is already selected, validate that it exists in the user's sites
+            const siteExists = data.some(site => site.id === currentSiteId);
+            
+            if (!siteExists && data.length > 0) {
+              console.log(`SiteNavigation: Selected site ${currentSiteId} not found in user's sites, auto-selecting first site: ${data[0].id}`);
+              sessionStorage.setItem('selectedSiteId', data[0].id);
+              setOpenSiteId(data[0].id);
+            } else if (siteExists) {
+              console.log(`SiteNavigation: Using existing site selection: ${currentSiteId}`);
+              setOpenSiteId(currentSiteId);
+            }
           }
         }
       } catch (error) {
@@ -69,9 +88,9 @@ export function SiteNavigation() {
     
     // Always fetch sites to show in sidebar, regardless of creation state
     fetchSites();
-  }, [user, isCreatingNewSite]);
+  }, [user, isCreatingNewSite, location]);
 
-  // Handle site selection based on stored ID - separate from creation state
+  // Handle site selection based on URL or stored ID
   useEffect(() => {
     // Don't select a site if we're creating a new one
     if (isCreatingNewSite) {
@@ -83,24 +102,30 @@ export function SiteNavigation() {
     if (location.pathname === '/new-site') {
       setIsCreatingNewSite(true);
       setOpenSiteId(null);
+      sessionStorage.removeItem('selectedSiteId');
       return;
     }
     
     // Get current site ID from session storage or URL
     const params = new URLSearchParams(location.search);
     const siteIdFromUrl = params.get('site');
-    const currentSiteId = siteIdFromUrl || sessionStorage.getItem('selectedSiteId');
+    const storedSiteId = sessionStorage.getItem('selectedSiteId');
     
-    if (currentSiteId) {
-      console.log(`Setting open site ID from URL or session storage: ${currentSiteId}`);
-      setOpenSiteId(currentSiteId);
+    // Priority: URL param > session storage
+    if (siteIdFromUrl) {
+      console.log(`SiteNavigation: Setting open site ID from URL: ${siteIdFromUrl}`);
+      setOpenSiteId(siteIdFromUrl);
       setIsCreatingNewSite(false);
       
       // Update session storage to ensure consistency
-      if (siteIdFromUrl && siteIdFromUrl !== sessionStorage.getItem('selectedSiteId')) {
-        console.log(`Updating session storage with site ID from URL: ${siteIdFromUrl}`);
+      if (siteIdFromUrl !== storedSiteId) {
+        console.log(`SiteNavigation: Updating session storage with site ID from URL: ${siteIdFromUrl}`);
         sessionStorage.setItem('selectedSiteId', siteIdFromUrl);
       }
+    } else if (storedSiteId) {
+      console.log(`SiteNavigation: Setting open site ID from session storage: ${storedSiteId}`);
+      setOpenSiteId(storedSiteId);
+      setIsCreatingNewSite(false);
     }
   }, [location.pathname, location.search, isCreatingNewSite]);
 

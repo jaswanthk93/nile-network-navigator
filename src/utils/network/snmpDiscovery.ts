@@ -91,28 +91,45 @@ export async function discoverMacAddresses(
   vlanIds: number[];
 }> {
   try {
+    console.log(`Starting MAC address discovery on ${ipAddress} with community ${community} and version ${version}`);
+    
     if (updateProgress) {
       updateProgress(`Discovering MAC addresses on ${ipAddress}...`, 50);
     }
     
-    console.log(`Starting MAC address discovery on ${ipAddress} with community ${community} and version ${version}`);
-    
+    // Call the backend API to perform MAC address discovery
     const result = await discoverMacAddressesWithSNMP(ipAddress, community, version);
     
-    if (updateProgress) {
-      updateProgress(`Found ${result.macAddresses.length} MAC addresses across ${result.vlanIds.length} VLANs`, 100);
+    console.log('MAC Address discovery raw response:', result);
+    
+    if (!result || !result.macAddresses) {
+      console.error('Invalid response format from MAC address discovery');
+      throw new Error('Invalid response format from MAC address discovery');
     }
     
-    console.log('MAC Address discovery results:', result);
+    if (updateProgress) {
+      updateProgress(`Found ${result.macAddresses.length} MAC addresses across ${result.vlanIds?.length || 0} VLANs`, 100);
+    }
     
     if (!result.macAddresses || result.macAddresses.length === 0) {
       console.warn('No MAC addresses found during discovery. This might indicate an SNMP configuration issue or a switch that does not support the necessary MIBs.');
     } else {
-      console.log(`Successfully discovered ${result.macAddresses.length} MAC addresses across ${result.vlanIds.length} VLANs.`);
-      console.log(`VLAN IDs found: ${result.vlanIds.join(', ')}`);
+      console.log(`Successfully discovered ${result.macAddresses.length} MAC addresses across ${result.vlanIds?.length || 0} VLANs.`);
+      console.log(`VLAN IDs found: ${result.vlanIds?.join(', ') || 'None'}`);
+      
+      // Sample some of the discovered MAC addresses for debugging
+      const sampleSize = Math.min(5, result.macAddresses.length);
+      console.log(`Sample of discovered MAC addresses (${sampleSize} of ${result.macAddresses.length}):`);
+      for (let i = 0; i < sampleSize; i++) {
+        console.log(`- MAC: ${result.macAddresses[i].macAddress}, VLAN: ${result.macAddresses[i].vlanId}, Type: ${result.macAddresses[i].deviceType}`);
+      }
     }
     
-    return result;
+    // Ensure the required properties exist to avoid errors in the UI
+    return {
+      macAddresses: result.macAddresses || [],
+      vlanIds: result.vlanIds || []
+    };
   } catch (error) {
     console.error(`Error discovering MAC addresses on ${ipAddress}:`, error);
     throw error;

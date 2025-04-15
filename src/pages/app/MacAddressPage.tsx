@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -29,10 +30,40 @@ const MacAddressPage = () => {
   const [segmentFilter, setSegmentFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+
+  // First, establish the selected site ID from URL or session storage
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const siteIdFromUrl = params.get('site');
+    const storedSiteId = sessionStorage.getItem('selectedSiteId');
+    
+    // Priority: URL param > session storage
+    const siteId = siteIdFromUrl || storedSiteId;
+    
+    console.log(`MacAddressPage: Initial site ID check - URL: ${siteIdFromUrl}, Session: ${storedSiteId}, Using: ${siteId}`);
+    
+    if (siteId) {
+      setSelectedSiteId(siteId);
+      // Ensure session storage is consistent with our selection
+      if (siteId !== storedSiteId) {
+        console.log(`MacAddressPage: Updating session storage with site ID: ${siteId}`);
+        sessionStorage.setItem('selectedSiteId', siteId);
+      }
+    } else {
+      console.warn("MacAddressPage: No site ID found in URL or session storage");
+      setError("No site selected. Please select a site from the sidebar first.");
+      toast({
+        title: "No Site Selected",
+        description: "Please select a site from the sidebar first.",
+        variant: "destructive",
+      });
+    }
+  }, [location.search, toast]);
 
   const fetchMacAddresses = async () => {
     if (!user) {
@@ -40,35 +71,27 @@ const MacAddressPage = () => {
       return;
     }
 
+    if (!selectedSiteId) {
+      console.error("No site ID available for fetching MAC addresses");
+      setError("No site selected. Please select a site from the sidebar first.");
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
       
-      const params = new URLSearchParams(location.search);
-      const siteIdFromUrl = params.get('site');
-      const selectedSiteId = siteIdFromUrl || sessionStorage.getItem('selectedSiteId');
+      console.log(`MacAddressPage: Fetching MAC addresses for site ${selectedSiteId}`);
       
-      if (!selectedSiteId) {
-        console.error("No site ID found in URL or session storage");
-        setError("No site selected. Please select a site from the sidebar first.");
-        setLoading(false);
-        toast({
-          title: "No Site Selected",
-          description: "Please select a site from the sidebar first.",
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      console.log(`Using site ID: ${selectedSiteId} (from ${siteIdFromUrl ? 'URL' : 'session storage'})`);
-      
-      const { data: vlans, error: vlansError } = await supabase
+      // First check if VLANs exist for this site
+      const { data: vlans, error: vlansError, count: vlanCount } = await supabase
         .from('vlans')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('site_id', selectedSiteId);
         
       if (vlansError) {
-        console.error("Error fetching VLANs from database:", vlansError);
+        console.error("Error fetching VLANs:", vlansError);
         setError("Error fetching VLAN information. Please try again.");
         setLoading(false);
         toast({
@@ -79,10 +102,10 @@ const MacAddressPage = () => {
         return;
       }
       
-      console.log(`Found ${vlans?.length || 0} VLANs in database for site ${selectedSiteId}`);
+      console.log(`MacAddressPage: Found ${vlans?.length || 0} VLANs for site ${selectedSiteId}`);
       
       if (!vlans || vlans.length === 0) {
-        console.error("No VLANs found in database for site:", selectedSiteId);
+        console.error("No VLANs found for site:", selectedSiteId);
         setError("No VLANs found. Please discover VLANs first.");
         setLoading(false);
         toast({
@@ -94,6 +117,7 @@ const MacAddressPage = () => {
         return;
       }
       
+      // Check if subnets exist for this site
       const { data: subnets, error: subnetsError } = await supabase
         .from('subnets')
         .select('*')
@@ -125,6 +149,7 @@ const MacAddressPage = () => {
         return;
       }
       
+      // Find switch devices for this specific site
       const { data: devices, error: devicesError } = await supabase
         .from('devices')
         .select('*')
@@ -224,20 +249,13 @@ const MacAddressPage = () => {
     }
   };
 
+  // Wait until we have a site ID before attempting to fetch MAC addresses
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const siteIdFromUrl = params.get('site');
-    
-    if (siteIdFromUrl) {
-      const currentSiteId = sessionStorage.getItem('selectedSiteId');
-      if (siteIdFromUrl !== currentSiteId) {
-        console.log(`Updating selectedSiteId in session storage from URL: ${siteIdFromUrl}`);
-        sessionStorage.setItem('selectedSiteId', siteIdFromUrl);
-      }
+    if (selectedSiteId && user) {
+      console.log(`MacAddressPage: Triggering MAC address fetch for site ${selectedSiteId}`);
+      fetchMacAddresses();
     }
-    
-    fetchMacAddresses();
-  }, [user, location.search, navigate, toast]);
+  }, [selectedSiteId, user]);
 
   const filteredMacAddresses = macAddresses.filter(mac => {
     const matchesSearch = mac.macAddress.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -273,7 +291,7 @@ const MacAddressPage = () => {
       title: "MAC addresses confirmed",
       description: `${selectedCount} MAC addresses selected for migration.`,
     });
-    navigate("/export");
+    navigate(`/export?site=${selectedSiteId}`);
   };
 
   const handleRetry = () => {
@@ -433,7 +451,7 @@ const MacAddressPage = () => {
         <CardFooter className="flex justify-between border-t px-6 py-4">
           <Button 
             variant="outline"
-            onClick={() => navigate("/vlans")}
+            onClick={() => navigate(`/vlans?site=${selectedSiteId}`)}
           >
             Back
           </Button>
