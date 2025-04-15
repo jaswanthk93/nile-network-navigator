@@ -126,7 +126,9 @@ export async function discoverMacAddresses(
       const vlanCommunity = vlanId === 1 ? community : `${community}@${vlanId}`;
 
       try {
-        const { data: macData, error: macError } = await executeSnmpWalk(ip, vlanCommunity, macOid, version);
+        // Fix: The executeSnmpWalk only needs ip and oid according to the error
+        // Pass the correct parameters based on what the function expects
+        const { data: macData, error: macError } = await executeSnmpWalk(ip, macOid);
 
         if (macError) {
           console.warn(`Error walking MAC addresses for VLAN ${vlanId}:`, macError);

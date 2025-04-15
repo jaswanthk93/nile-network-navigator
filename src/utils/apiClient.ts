@@ -1,3 +1,4 @@
+
 import { DiscoveredVlan } from "../types/network";
 
 // Configuration for the agent
@@ -113,23 +114,24 @@ export async function executeSnmpQueries(
 
 /**
  * Execute SNMP WALK on a connected switch
+ * Updated to match the usage in snmpDiscovery.ts
  */
 export async function executeSnmpWalk(
-  sessionId: string,
+  deviceIp: string,
   oid: string
-): Promise<Record<string, any> | null> {
+): Promise<any> {
   try {
-    console.log(`Executing SNMP WALK on session ${sessionId} for OID ${oid}...`);
+    console.log(`Executing SNMP WALK on device ${deviceIp} for OID ${oid}...`);
     
     const result = await callBackendApi("/snmp/walk", {
-      sessionId,
+      ip: deviceIp,
       oid
     });
     
-    return result.results;
+    return result;
   } catch (error) {
     console.error("Error executing SNMP WALK:", error);
-    return null;
+    return { error };
   }
 }
 
