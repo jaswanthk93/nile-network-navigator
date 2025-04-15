@@ -3,7 +3,7 @@
  * SNMP Discovery utilities for device information retrieval
  */
 
-import { discoverDeviceWithSNMP } from "@/utils/apiClient";
+import { discoverDeviceWithSNMP, discoverMacAddressesWithSNMP } from "@/utils/apiClient";
 
 /**
  * Use SNMP to get device information
