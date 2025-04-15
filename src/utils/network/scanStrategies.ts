@@ -6,6 +6,19 @@
 import { simulatePingAndARPLookup } from "./ipUtils";
 
 /**
+ * Scan a single network device
+ */
+export async function scanNetworkDevice(ip: string): Promise<{isReachable: boolean, macAddress?: string}> {
+  // Simulate a ping to check if device is reachable
+  const pingResult = simulatePingAndARPLookup(ip, "192.168.1.1", 24); // Use default values for local IP and mask
+  
+  return {
+    isReachable: pingResult.reachable,
+    macAddress: pingResult.macAddress
+  };
+}
+
+/**
  * Scan a single host (/32 subnet)
  */
 export async function scanSingleHost(

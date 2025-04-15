@@ -37,6 +37,29 @@ export function isInSameSubnet(ip1: string, ip2: string, maskBits: number): bool
   return (ip1Long & mask) === (ip2Long & mask);
 }
 
+// Get all host IP addresses in a subnet
+export function getHostsInSubnet(cidr: string): string[] {
+  const { baseIP, maskBits } = parseCIDR(cidr);
+  const ipRange = getIPRange(cidr);
+  const hosts: string[] = [];
+  
+  // For /32, return just the single IP
+  if (maskBits === 32) {
+    return [baseIP];
+  }
+  
+  // Generate all host IPs in the range
+  let currentIP = ipToLong(ipRange.startIP);
+  const maxIP = ipToLong(ipRange.endIP);
+  
+  while (currentIP <= maxIP) {
+    hosts.push(longToIp(currentIP));
+    currentIP++;
+  }
+  
+  return hosts;
+}
+
 // Calculate IP range for scanning based on subnet mask
 export function getIPRange(cidr: string): { startIP: string, endIP: string, totalIPs: number, baseIP: string, maskBits: number } {
   const { baseIP, maskBits } = parseCIDR(cidr);

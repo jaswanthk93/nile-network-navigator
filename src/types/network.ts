@@ -1,3 +1,4 @@
+
 /**
  * Interface for discovered VLAN
  */
@@ -99,6 +100,23 @@ export interface DeviceData {
   needs_verification: boolean | null;
   confirmed: boolean | null;
   sysdescr: string | null;  // Only use lowercase version to match database
+}
+
+/**
+ * Interface for discovered device
+ */
+export interface DiscoveredDevice {
+  ip_address: string;
+  hostname?: string | null;
+  mac_address?: string | null;
+  macAddresses?: DiscoveredMacAddress[];
+  sysDescr?: string | null;
+  make?: string | null;
+  model?: string | null;
+  category?: string | null;
+  status?: string;
+  confirmed?: boolean;
+  needs_verification?: boolean;
 }
 
 /**
