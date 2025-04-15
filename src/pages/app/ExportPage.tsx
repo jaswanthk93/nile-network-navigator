@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -31,7 +30,6 @@ const ExportPage = () => {
   const location = useLocation();
   const { user } = useAuth();
 
-  // Get site ID from URL or session storage
   useEffect(() => {
     if (!user) return;
 
@@ -56,7 +54,6 @@ const ExportPage = () => {
     }
   }, [location.search, toast, user]);
 
-  // Fetch MAC addresses from the database
   useEffect(() => {
     const fetchMacAddresses = async () => {
       if (!user || !selectedSiteId) return;
@@ -64,7 +61,6 @@ const ExportPage = () => {
       try {
         setLoading(true);
         
-        // First get VLANs to map IDs to names
         const { data: vlans, error: vlansError } = await supabase
           .from('vlans')
           .select('*')
@@ -74,13 +70,11 @@ const ExportPage = () => {
           throw new Error(`Error fetching VLANs: ${vlansError.message}`);
         }
         
-        // Create a map of VLAN IDs to names
         const vlanMap = new Map();
         vlans?.forEach(vlan => {
           vlanMap.set(vlan.vlan_id, vlan.name || `VLAN ${vlan.vlan_id}`);
         });
         
-        // Fetch MAC addresses from the database
         const { data: macAddresses, error: macError } = await supabase
           .from('mac_addresses')
           .select('*')
@@ -102,7 +96,6 @@ const ExportPage = () => {
           return;
         }
         
-        // Transform data for export
         const transformedData: ExportData[] = macAddresses.map(mac => ({
           macAddress: mac.mac_address,
           segmentName: vlanMap.get(mac.vlan_id) || `VLAN ${mac.vlan_id}`,
@@ -140,28 +133,36 @@ const ExportPage = () => {
   };
 
   const downloadCsv = () => {
-    // Generate CSV content
-    const csvContent = getCSVContent();
-    
-    // Create a Blob and download link
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    
-    // Set up download attributes
-    link.setAttribute('href', url);
-    link.setAttribute('download', `nile-export-${new Date().toISOString().slice(0, 10)}.csv`);
-    link.style.visibility = 'hidden';
-    
-    // Add to document, trigger click, and clean up
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    toast({
-      title: "CSV downloaded",
-      description: "The CSV file has been downloaded to your device.",
-    });
+    try {
+      const csvContent = getCSVContent();
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', `nile-export-${new Date().toISOString().split('T')[0]}.csv`);
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 100);
+      
+      toast({
+        title: "CSV downloaded",
+        description: "The CSV file has been downloaded to your device.",
+      });
+    } catch (error) {
+      console.error("Error downloading CSV:", error);
+      toast({
+        title: "Download failed",
+        description: "Failed to download CSV file. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const getCSVContent = () => {
