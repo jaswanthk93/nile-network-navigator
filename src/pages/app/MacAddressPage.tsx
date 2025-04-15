@@ -305,6 +305,11 @@ const MacAddressPage = () => {
               description: `Successfully discovered ${transformedMacs.length} MAC addresses.`,
             });
             
+            console.log(`Saving ${transformedMacs.length} MAC addresses to database for site ${selectedSiteId}`);
+            
+            let saveCount = 0;
+            let errorCount = 0;
+            
             for (const mac of transformedMacs) {
               const macAddressRecord = {
                 mac_address: mac.macAddress,
@@ -315,16 +320,40 @@ const MacAddressPage = () => {
                 user_id: user.id
               };
               
-              const { error: saveError } = await supabase
-                .from('mac_addresses')
-                .upsert(macAddressRecord);
-                
-              if (saveError) {
-                console.error("Error saving MAC address to database:", saveError);
+              console.log(`Saving MAC address to database:`, macAddressRecord);
+              
+              try {
+                const { error: saveError, data: savedResult } = await supabase
+                  .from('mac_addresses')
+                  .upsert(macAddressRecord);
+                  
+                if (saveError) {
+                  console.error(`Error saving MAC address to database: ${mac.macAddress}`, saveError);
+                  errorCount++;
+                } else {
+                  console.log(`Successfully saved MAC address to database: ${mac.macAddress}`, savedResult);
+                  saveCount++;
+                }
+              } catch (saveErr) {
+                console.error(`Exception saving MAC address to database: ${mac.macAddress}`, saveErr);
+                errorCount++;
               }
             }
             
-            console.log(`Successfully saved MAC addresses to database`);
+            console.log(`MAC address save summary: ${saveCount} saved successfully, ${errorCount} errors`);
+            
+            if (errorCount > 0) {
+              toast({
+                title: "Some MAC Addresses Not Saved",
+                description: `${saveCount} MAC addresses saved, but ${errorCount} failed to save.`,
+                variant: "destructive",
+              });
+            } else {
+              toast({
+                title: "MAC Addresses Saved",
+                description: `Successfully saved all ${saveCount} MAC addresses to database.`,
+              });
+            }
           }
         } catch (macDiscoveryError) {
           console.error("Error discovering MAC addresses:", macDiscoveryError);

@@ -195,7 +195,7 @@ export async function executeSnmpWalk(
 
 /**
  * Discover MAC addresses on a switch using SNMP
- * Updated to accept a list of VLANs to query
+ * Updated to handle detailed error reporting and improve logging
  */
 export async function discoverMacAddressesWithSNMP(
   deviceIp: string,
@@ -227,9 +227,26 @@ export async function discoverMacAddressesWithSNMP(
     
     const result = await callBackendApi("/snmp/discover-mac-addresses", requestData);
     
+    // Log the complete response for debugging
+    console.log(`MAC address discovery response:`, JSON.stringify(result, null, 2));
+    
+    if (!result.macAddresses || !Array.isArray(result.macAddresses)) {
+      console.error(`Invalid MAC address response format:`, result);
+      return {
+        macAddresses: [],
+        vlanIds: vlanIds || []
+      };
+    }
+    
+    // Log detailed information about the discovered MAC addresses
+    console.log(`Successfully discovered ${result.macAddresses.length} MAC addresses`);
+    if (result.macAddresses.length > 0) {
+      console.log(`Sample MAC address entry:`, result.macAddresses[0]);
+    }
+    
     return {
       macAddresses: result.macAddresses || [],
-      vlanIds: result.vlanIds || []
+      vlanIds: result.vlanIds || vlanIds || []
     };
   } catch (error) {
     console.error("Error discovering MAC addresses with SNMP:", error);

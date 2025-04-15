@@ -34,8 +34,10 @@ export async function saveDiscoveredDevices(
         sysdescr: device.sysDescr || null
       };
       
-      // Use upsert without specifying onConflict fields, let Supabase use the primary key
-      const { error: deviceError } = await supabase
+      console.log('Saving device record:', deviceRecord);
+      
+      // Use upsert without onConflict parameter
+      const { error: deviceError, data: savedDevice } = await supabase
         .from('devices')
         .upsert(deviceRecord);
       
@@ -43,6 +45,8 @@ export async function saveDiscoveredDevices(
         console.error('Error inserting device:', deviceError);
         return { error: deviceError };
       }
+      
+      console.log('Successfully saved device:', savedDevice || deviceRecord.ip_address);
       
       // Process MAC addresses if available
       if (device.macAddresses && Array.isArray(device.macAddresses) && device.macAddresses.length > 0) {
@@ -58,8 +62,10 @@ export async function saveDiscoveredDevices(
             user_id: userId
           };
 
-          // Insert each MAC address individually using simple upsert without onConflict
-          const { error: macError } = await supabase
+          console.log('Saving MAC address record:', macAddressRecord);
+
+          // Insert each MAC address individually
+          const { error: macError, data: savedMac } = await supabase
             .from('mac_addresses')
             .upsert(macAddressRecord);
           
@@ -67,6 +73,8 @@ export async function saveDiscoveredDevices(
             console.error('Error inserting MAC address:', macError);
             return { error: macError };
           }
+          
+          console.log('Successfully saved MAC address:', savedMac || macAddressRecord.mac_address);
         }
       }
     }
