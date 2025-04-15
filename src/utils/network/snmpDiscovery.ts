@@ -94,6 +94,8 @@ export async function discoverMacAddresses(
       updateProgress(`Discovering MAC addresses on ${ipAddress}...`, 50);
     }
     
+    console.log(`Starting MAC address discovery on ${ipAddress} with community ${community} and version ${version}`);
+    
     const result = await discoverMacAddressesWithSNMP(ipAddress, community, version);
     
     if (updateProgress) {

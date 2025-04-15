@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,10 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
-import { TabletSmartphoneIcon, SearchIcon, WifiIcon } from "lucide-react";
+import { TabletSmartphoneIcon, SearchIcon, WifiIcon, AlertTriangleIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { discoverMacAddressesWithSNMP } from "@/utils/apiClient";
+import { discoverMacAddresses } from "@/utils/network/snmpDiscovery";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 interface MacAddress {
   id: string;
@@ -28,8 +29,10 @@ const MacAddressPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [segmentFilter, setSegmentFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
   useEffect(() => {
@@ -41,18 +44,81 @@ const MacAddressPage = () => {
 
       try {
         setLoading(true);
+        setError(null);
         
-        // First, get the VLANs from the database
+        // First, get the current site ID from sessionStorage
+        const selectedSiteId = sessionStorage.getItem('selectedSiteId');
+        
+        if (!selectedSiteId) {
+          console.error("No site ID found in session storage");
+          setError("No site selected. Please select a site from the sidebar first.");
+          setLoading(false);
+          toast({
+            title: "No Site Selected",
+            description: "Please select a site from the sidebar first.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        console.log(`Using site ID from session storage: ${selectedSiteId}`);
+        
+        // Get the subnets for the selected site
+        const { data: subnets, error: subnetsError } = await supabase
+          .from('subnets')
+          .select('*')
+          .eq('site_id', selectedSiteId)
+          .order('created_at', { ascending: false });
+          
+        if (subnetsError) {
+          console.error("Error fetching subnets:", subnetsError);
+          setError("Error fetching subnet information. Please try again.");
+          setLoading(false);
+          toast({
+            title: "Error",
+            description: "Failed to load subnet information.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        if (!subnets || subnets.length === 0) {
+          console.error("No subnets found for site:", selectedSiteId);
+          setError("No subnet information found. Please complete network discovery first.");
+          setLoading(false);
+          toast({
+            title: "No Subnet Information",
+            description: "Network information is missing. Please complete network discovery first.",
+            variant: "destructive",
+          });
+          navigate('/site-subnet');
+          return;
+        }
+        
+        console.log(`Found ${subnets.length} subnets for site ${selectedSiteId}`);
+        
+        // Get the VLANs for the site
         const { data: vlans, error: vlansError } = await supabase
           .from('vlans')
           .select('*')
-          .eq('user_id', user.id);
+          .eq('site_id', selectedSiteId);
           
         if (vlansError) {
-          throw new Error(`Error fetching VLANs: ${vlansError.message}`);
+          console.error("Error fetching VLANs:", vlansError);
+          setError("Error fetching VLAN information. Please try again.");
+          setLoading(false);
+          toast({
+            title: "Error",
+            description: "Failed to load VLAN information.",
+            variant: "destructive",
+          });
+          return;
         }
         
         if (!vlans || vlans.length === 0) {
+          console.error("No VLANs found for site:", selectedSiteId);
+          setError("No VLANs found. Please discover VLANs first.");
+          setLoading(false);
           toast({
             title: "No VLANs Found",
             description: "You need to discover VLANs first before discovering MAC addresses.",
@@ -62,43 +128,32 @@ const MacAddressPage = () => {
           return;
         }
         
-        // Get the site ID associated with the VLANs
-        const siteId = vlans[0].site_id;
-        
-        // Get the subnet information for the site to find the switch IP address
-        const { data: subnets, error: subnetsError } = await supabase
-          .from('subnets')
-          .select('*')
-          .eq('site_id', siteId)
-          .limit(1);
-          
-        if (subnetsError) {
-          throw new Error(`Error fetching subnet information: ${subnetsError.message}`);
-        }
-        
-        if (!subnets || subnets.length === 0) {
-          toast({
-            title: "No Subnet Information",
-            description: "Network information is missing. Please complete network discovery first.",
-            variant: "destructive",
-          });
-          navigate('/discovery');
-          return;
-        }
+        console.log(`Found ${vlans.length} VLANs for site ${selectedSiteId}`);
         
         // Get switch devices from the database
         const { data: devices, error: devicesError } = await supabase
           .from('devices')
           .select('*')
-          .eq('subnet_id', subnets[0].id)
+          .eq('site_id', selectedSiteId)
           .eq('category', 'Switch')
           .limit(1);
           
         if (devicesError) {
-          throw new Error(`Error fetching switch devices: ${devicesError.message}`);
+          console.error("Error fetching switch devices:", devicesError);
+          setError("Error fetching switch devices. Please try again.");
+          setLoading(false);
+          toast({
+            title: "Error",
+            description: "Failed to find network switches.",
+            variant: "destructive",
+          });
+          return;
         }
         
         if (!devices || devices.length === 0) {
+          console.error("No switch devices found for site:", selectedSiteId);
+          setError("No switch devices found. Please complete device discovery first.");
+          setLoading(false);
           toast({
             title: "No Switch Found",
             description: "No switch device found in the network. Please complete device discovery first.",
@@ -109,8 +164,11 @@ const MacAddressPage = () => {
         }
         
         const switchIp = devices[0].ip_address;
-        const community = subnets[0].snmp_community || 'public';
-        const version = subnets[0].snmp_version || '2c';
+        const subnet = subnets[0]; // Use the first subnet for SNMP credentials
+        const community = subnet.snmp_community || 'public';
+        const version = subnet.snmp_version || '2c';
+        
+        console.log(`Using switch ${switchIp} with community ${community} and version ${version}`);
         
         // Now, use SNMP to discover MAC addresses
         toast({
@@ -118,16 +176,17 @@ const MacAddressPage = () => {
           description: `Using SNMP to discover MAC addresses on ${switchIp}...`,
         });
         
-        console.log(`Starting MAC address discovery on ${switchIp} with community ${community} and version ${version}`);
-        
-        // Get MAC addresses from the switch using our new function
-        const macAddressResults = await discoverMacAddressesWithSNMP(
+        // Get MAC addresses from the switch using our discoverMacAddresses function
+        const macAddressResults = await discoverMacAddresses(
           switchIp,
           community,
-          version
+          version,
+          (message: string, progress: number) => {
+            console.log(message); // Log progress messages
+          }
         );
         
-        console.log(`Discovered ${macAddressResults.macAddresses.length} MAC addresses`);
+        console.log(`Discovered ${macAddressResults.macAddresses.length} MAC addresses across ${macAddressResults.vlanIds.length} VLANs`);
         
         // Create a map of VLAN IDs to names from the database
         const vlanMap = new Map();
@@ -149,12 +208,14 @@ const MacAddressPage = () => {
         setMacAddresses(transformedMacs);
         
         if (transformedMacs.length === 0) {
+          setError("No MAC addresses found. The switch did not return any MAC address information.");
           toast({
             title: "No MAC Addresses Found",
             description: "No MAC addresses were discovered on the network.",
             variant: "destructive",
           });
         } else {
+          setError(null);
           toast({
             title: "MAC Addresses Discovered",
             description: `Successfully discovered ${transformedMacs.length} MAC addresses.`,
@@ -162,6 +223,7 @@ const MacAddressPage = () => {
         }
       } catch (error) {
         console.error("Error loading MAC addresses:", error);
+        setError(error instanceof Error ? error.message : "An unexpected error occurred");
         toast({
           title: "Error Loading MAC Addresses",
           description: error instanceof Error ? error.message : "An unexpected error occurred",
@@ -212,6 +274,12 @@ const MacAddressPage = () => {
     navigate("/export");
   };
 
+  const handleRetry = () => {
+    setLoading(true);
+    setError(null);
+    fetchMacAddresses();
+  };
+
   return (
     <div className="container mx-auto max-w-6xl space-y-8">
       <div className="flex flex-col space-y-2">
@@ -232,109 +300,133 @@ const MacAddressPage = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0 sm:space-x-2 pb-4">
-            <div className="relative w-full sm:w-auto">
-              <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search MAC addresses..."
-                className="pl-8 w-full"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col sm:flex-row w-full sm:w-auto space-y-2 sm:space-y-0 sm:space-x-2">
-              <Select
-                value={segmentFilter}
-                onValueChange={(value) => setSegmentFilter(value)}
-              >
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Filter by segment" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Segments</SelectItem>
-                  {segments.map((segment) => (
-                    <SelectItem key={segment} value={segment}>
-                      {segment}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertTriangleIcon className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+              <div className="mt-4">
+                <Button 
+                  onClick={handleRetry} 
+                  variant="outline" 
+                  size="sm"
+                  disabled={loading}
+                >
+                  Retry
+                </Button>
+              </div>
+            </Alert>
+          )}
 
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[50px]">
-                    <Checkbox 
-                      checked={filteredMacAddresses.length > 0 && filteredMacAddresses.every(mac => mac.selected)}
-                      onCheckedChange={(checked) => toggleAll(!!checked)}
-                    />
-                  </TableHead>
-                  <TableHead>MAC Address</TableHead>
-                  <TableHead>VLAN</TableHead>
-                  <TableHead>Segment</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Port</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-4 h-40">
-                      <div className="flex flex-col items-center justify-center space-y-2">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                        <p className="text-muted-foreground">Discovering MAC addresses via SNMP...</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : filteredMacAddresses.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
-                      No MAC addresses found matching filter criteria
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredMacAddresses.map((mac) => (
-                    <TableRow key={mac.id}>
-                      <TableCell>
+          {!error && (
+            <>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0 sm:space-x-2 pb-4">
+                <div className="relative w-full sm:w-auto">
+                  <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="Search MAC addresses..."
+                    className="pl-8 w-full"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col sm:flex-row w-full sm:w-auto space-y-2 sm:space-y-0 sm:space-x-2">
+                  <Select
+                    value={segmentFilter}
+                    onValueChange={(value) => setSegmentFilter(value)}
+                  >
+                    <SelectTrigger className="w-full sm:w-[180px]">
+                      <SelectValue placeholder="Filter by segment" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Segments</SelectItem>
+                      {segments.map((segment) => (
+                        <SelectItem key={segment} value={segment}>
+                          {segment}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[50px]">
                         <Checkbox 
-                          checked={mac.selected}
-                          onCheckedChange={() => toggleMacSelection(mac.id)}
+                          checked={filteredMacAddresses.length > 0 && filteredMacAddresses.every(mac => mac.selected)}
+                          onCheckedChange={(checked) => toggleAll(!!checked)}
                         />
-                      </TableCell>
-                      <TableCell className="font-mono">{mac.macAddress}</TableCell>
-                      <TableCell>{mac.vlanId}</TableCell>
-                      <TableCell>{mac.segmentName}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          <WifiIcon className="h-4 w-4 text-muted-foreground" />
-                          {mac.deviceType}
-                        </div>
-                      </TableCell>
-                      <TableCell>{mac.port || "—"}</TableCell>
+                      </TableHead>
+                      <TableHead>MAC Address</TableHead>
+                      <TableHead>VLAN</TableHead>
+                      <TableHead>Segment</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Port</TableHead>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-4 h-40">
+                          <div className="flex flex-col items-center justify-center space-y-2">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                            <p className="text-muted-foreground">Discovering MAC addresses via SNMP...</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredMacAddresses.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
+                          No MAC addresses found matching filter criteria
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredMacAddresses.map((mac) => (
+                        <TableRow key={mac.id}>
+                          <TableCell>
+                            <Checkbox 
+                              checked={mac.selected}
+                              onCheckedChange={() => toggleMacSelection(mac.id)}
+                            />
+                          </TableCell>
+                          <TableCell className="font-mono">{mac.macAddress}</TableCell>
+                          <TableCell>{mac.vlanId}</TableCell>
+                          <TableCell>{mac.segmentName}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              <WifiIcon className="h-4 w-4 text-muted-foreground" />
+                              {mac.deviceType}
+                            </div>
+                          </TableCell>
+                          <TableCell>{mac.port || "—"}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
 
-          <div className="mt-4 flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              <p>Selected: {macAddresses.filter(mac => mac.selected).length} of {macAddresses.length}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => toggleAll(true)}>
-                Select All
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => toggleAll(false)}>
-                Deselect All
-              </Button>
-            </div>
-          </div>
+              {macAddresses.length > 0 && (
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    <p>Selected: {macAddresses.filter(mac => mac.selected).length} of {macAddresses.length}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => toggleAll(true)}>
+                      Select All
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => toggleAll(false)}>
+                      Deselect All
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
         <CardFooter className="flex justify-between border-t px-6 py-4">
           <Button 
@@ -343,7 +435,10 @@ const MacAddressPage = () => {
           >
             Back
           </Button>
-          <Button onClick={handleNext}>
+          <Button 
+            onClick={handleNext} 
+            disabled={loading || error !== null || macAddresses.filter(mac => mac.selected).length === 0}
+          >
             Continue to Export
           </Button>
         </CardFooter>

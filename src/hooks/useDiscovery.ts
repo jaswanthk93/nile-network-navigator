@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+
+import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,7 +39,7 @@ export const useDiscovery = (userId: string | undefined) => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const checkBackendStatus = async () => {
+  const checkBackendStatus = useCallback(async () => {
     setIsCheckingBackend(true);
     try {
       const result = await checkBackendConnection();
@@ -65,11 +66,11 @@ export const useDiscovery = (userId: string | undefined) => {
     } finally {
       setIsCheckingBackend(false);
     }
-  };
+  }, [toast]);
   
   useEffect(() => {
     checkBackendStatus();
-  }, [toast]);
+  }, [checkBackendStatus]);
 
   useEffect(() => {
     const fetchSubnets = async () => {
