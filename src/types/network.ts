@@ -16,6 +16,7 @@ export interface DiscoveredMacAddress {
   macAddress: string;
   vlanId: number;
   deviceType: string;
+  port?: string;
   selected?: boolean;
 }
 

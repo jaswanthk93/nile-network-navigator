@@ -1,4 +1,3 @@
-
 import { discoverMacAddresses } from "./snmpDiscovery";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -137,7 +136,7 @@ export async function fetchMacAddressesForSite(
       vlanId: mac.vlanId,
       segmentName: vlanMap.get(mac.vlanId) || `VLAN ${mac.vlanId}`,
       deviceType: mac.deviceType || 'Unknown',
-      port: mac.port,
+      port: mac.port || undefined,  // Handle the case when port is not available
       selected: true
     }));
     

@@ -233,7 +233,7 @@ const MacAddressPage = () => {
         vlanId: mac.vlanId,
         segmentName: vlanMap.get(mac.vlanId) || `VLAN ${mac.vlanId}`,
         deviceType: mac.deviceType || 'Unknown',
-        port: mac.port,
+        port: mac.port || undefined,
         selected: true
       }));
       
