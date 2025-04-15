@@ -1,15 +1,16 @@
 
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
-import { FolderKanbanIcon, LayersIcon, TagIcon, Loader2Icon, AlertTriangleIcon } from "lucide-react";
+import { FolderKanbanIcon, LayersIcon, TagIcon, Loader2Icon, AlertTriangleIcon, FeatherIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { discoverVlans } from "@/utils/network/vlanDiscovery";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface Vlan {
   id: string;
@@ -31,24 +32,77 @@ const VlansPage = () => {
   const [discoveryProgress, setDiscoveryProgress] = useState({ message: "", percent: 0 });
   const [editingCell, setEditingCell] = useState<{id: string, field: keyof Vlan} | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+  const [siteError, setSiteError] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
   const isValidVlanId = (vlanId: number) => {
     return vlanId >= MIN_VLAN_ID && vlanId <= MAX_VLAN_ID;
   };
 
+  // First, establish the selected site ID from URL or session storage
+  useEffect(() => {
+    if (!user) return;
+
+    const params = new URLSearchParams(location.search);
+    const siteIdFromUrl = params.get('site');
+    const storedSiteId = sessionStorage.getItem('selectedSiteId');
+    
+    // Priority: URL param > session storage
+    const siteId = siteIdFromUrl || storedSiteId;
+    
+    console.log(`VlansPage: Initial site ID check - URL: ${siteIdFromUrl}, Session: ${storedSiteId}, Using: ${siteId}`);
+    
+    if (siteId) {
+      setSelectedSiteId(siteId);
+      // Ensure session storage is consistent with our selection
+      if (siteId !== storedSiteId) {
+        console.log(`VlansPage: Updating session storage with site ID: ${siteId}`);
+        sessionStorage.setItem('selectedSiteId', siteId);
+      }
+      setSiteError(null);
+    } else {
+      console.warn("VlansPage: No site ID found in URL or session storage");
+      setSiteError("No site selected. Please select a site from the sidebar first.");
+      // Don't automatically redirect here - just show an error message
+    }
+  }, [location.search, user]);
+
   const fetchVlans = useCallback(async () => {
-    if (!user || dataLoaded) return;
+    if (!user || dataLoaded || !selectedSiteId) return;
     
     try {
       setLoading(true);
       
+      // Verify the site exists
+      const { data: siteData, error: siteError } = await supabase
+        .from('sites')
+        .select('id, name')
+        .eq('id', selectedSiteId)
+        .single();
+        
+      if (siteError || !siteData) {
+        console.error("Error verifying site:", siteError || "Site not found");
+        setSiteError("Site not found. Please select a valid site from the sidebar.");
+        setLoading(false);
+        toast({
+          title: "Site Not Found",
+          description: "The selected site could not be found. Please select a valid site.",
+          variant: "destructive",
+        });
+        sessionStorage.removeItem('selectedSiteId');
+        return;
+      }
+      
+      console.log(`VlansPage: Verified site exists: ${siteData.name} (${siteData.id})`);
+      
       const { data: devices, error: devicesError } = await supabase
         .from('devices')
         .select('*')
-        .eq('user_id', user.id);
+        .eq('site_id', selectedSiteId);
         
       if (devicesError) {
         throw new Error(`Error fetching devices: ${devicesError.message}`);
@@ -61,21 +115,21 @@ const VlansPage = () => {
           variant: "destructive",
         });
         setLoading(false);
-        navigate('/discovery');
+        navigate(`/discovery?site=${selectedSiteId}`);
         return;
       }
 
       const { data: vlanData, error: vlansError } = await supabase
         .from('vlans')
         .select('*')
-        .eq('user_id', user.id);
+        .eq('site_id', selectedSiteId);
         
       if (vlansError) {
         throw new Error(`Error fetching VLANs: ${vlansError.message}`);
       }
 
       if (!vlanData || vlanData.length === 0) {
-        console.log("No VLANs found in database, attempting to discover...");
+        console.log(`No VLANs found in database for site ${selectedSiteId}, attempting to discover...`);
         
         const switches = devices.filter(device => 
           device.category === 'Switch' || device.make === 'Cisco' || device.make === 'Juniper'
@@ -114,7 +168,7 @@ const VlansPage = () => {
           return;
         }
         
-        console.log("Selected primary switch for VLAN discovery:", primarySwitch);
+        console.log(`Selected primary switch for VLAN discovery: ${primarySwitch.hostname || primarySwitch.ip_address} (${primarySwitch.ip_address})`);
         
         try {
           const { data: subnetData } = await supabase
@@ -132,7 +186,7 @@ const VlansPage = () => {
           
           const discoveredVlans = result.vlans;
           
-          console.log("Raw discovered VLANs:", discoveredVlans);
+          console.log(`Raw discovered VLANs for site ${selectedSiteId}:`, discoveredVlans);
           
           if (discoveredVlans.length === 0) {
             toast({
@@ -251,7 +305,7 @@ const VlansPage = () => {
       setLoading(false);
       setDataLoaded(true);
     }
-  }, [user, toast, navigate, dataLoaded]);
+  }, [user, toast, navigate, dataLoaded, selectedSiteId]);
 
   useEffect(() => {
     if (!user) {
@@ -264,8 +318,10 @@ const VlansPage = () => {
       return;
     }
 
-    fetchVlans();
-  }, [user, fetchVlans, toast, navigate]);
+    if (selectedSiteId) {
+      fetchVlans();
+    }
+  }, [user, fetchVlans, toast, navigate, selectedSiteId]);
 
   const handleSaveEdit = (id: string, field: keyof Vlan, value: string) => {
     if (field === "vlanId") {
@@ -334,6 +390,15 @@ const VlansPage = () => {
   };
 
   const handleConfirmVlans = async () => {
+    if (!selectedSiteId) {
+      toast({
+        title: "No Site Selected",
+        description: "Please select a site before saving VLANs.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const missingSegments = vlans.filter(vlan => !vlan.segmentName);
     if (missingSegments.length > 0) {
       toast({
@@ -352,80 +417,27 @@ const VlansPage = () => {
     try {
       setLoading(true);
 
-      // Check if we have a site ID in localStorage
-      let siteId = localStorage.getItem('currentSiteId');
-      
-      if (!siteId) {
-        console.log("No site ID found in localStorage, checking for existing sites");
-        
-        // First check if the user already has any sites
-        const { data: existingSites, error: sitesError } = await supabase
-          .from('sites')
-          .select('id')
-          .eq('user_id', user!.id)
-          .limit(1);
+      // Verify that the site ID exists in the database
+      const { data: siteCheck, error: siteCheckError } = await supabase
+        .from('sites')
+        .select('id, name')
+        .eq('id', selectedSiteId)
+        .eq('user_id', user!.id)
+        .single();
           
-        if (sitesError) {
-          throw new Error(`Error checking for existing sites: ${sitesError.message}`);
-        }
-        
-        if (existingSites && existingSites.length > 0) {
-          // Use the first existing site
-          siteId = existingSites[0].id;
-          localStorage.setItem('currentSiteId', siteId);
-          console.log(`Using existing site with ID: ${siteId}`);
-        } else {
-          // Create a default site if none exists
-          console.log("No existing sites found, creating a default site");
-          
-          const { data: newSite, error: siteError } = await supabase
-            .from('sites')
-            .insert({
-              name: 'Default Site',
-              user_id: user!.id
-            })
-            .select('id')
-            .single();
-            
-          if (siteError) {
-            throw new Error(`Error creating default site: ${siteError.message}`);
-          }
-          
-          siteId = newSite.id;
-          localStorage.setItem('currentSiteId', siteId);
-          console.log(`Created default site with ID: ${siteId}`);
-        }
-      } else {
-        // Verify that the site ID actually exists in the database
-        const { data: siteCheck, error: siteCheckError } = await supabase
-          .from('sites')
-          .select('id')
-          .eq('id', siteId)
-          .eq('user_id', user!.id)
-          .single();
-          
-        if (siteCheckError || !siteCheck) {
-          console.log("Site ID in localStorage doesn't exist in the database, creating a new one");
-          
-          // Create a new default site
-          const { data: newSite, error: siteError } = await supabase
-            .from('sites')
-            .insert({
-              name: 'Default Site',
-              user_id: user!.id
-            })
-            .select('id')
-            .single();
-            
-          if (siteError) {
-            throw new Error(`Error creating default site: ${siteError.message}`);
-          }
-          
-          siteId = newSite.id;
-          localStorage.setItem('currentSiteId', siteId);
-          console.log(`Created default site with ID: ${siteId}`);
-        }
+      if (siteCheckError || !siteCheck) {
+        console.error("Site ID in session storage doesn't exist in the database:", siteCheckError || "Site not found");
+        toast({
+          title: "Invalid Site",
+          description: "The selected site was not found. Please select a valid site.",
+          variant: "destructive",
+        });
+        sessionStorage.removeItem('selectedSiteId');
+        navigate('/');
+        return;
       }
+
+      console.log(`Saving VLANs for site: ${siteCheck.name} (${selectedSiteId})`);
 
       const vlansToSave = vlans.map(vlan => {
         const isNewVlan = vlan.id.startsWith('discovered-') || vlan.id.startsWith('new-');
@@ -439,7 +451,7 @@ const VlansPage = () => {
           id?: string;
         } = {
           user_id: user!.id,
-          site_id: siteId as string,
+          site_id: selectedSiteId,
           vlan_id: vlan.vlanId,
           name: vlan.name,
           description: vlan.segmentName
@@ -452,7 +464,7 @@ const VlansPage = () => {
         return vlanObject;
       });
 
-      console.log("Saving VLANs with data:", vlansToSave);
+      console.log(`Saving ${vlansToSave.length} VLANs with site ID: ${selectedSiteId}`);
 
       const { error } = await supabase
         .from('vlans')
@@ -470,7 +482,7 @@ const VlansPage = () => {
         description: "VLAN to segment mapping has been saved.",
       });
       
-      navigate("/mac-addresses");
+      navigate(`/mac-addresses?site=${selectedSiteId}`);
     } catch (error) {
       console.error("Error saving VLAN data:", error);
       toast({
@@ -509,6 +521,28 @@ const VlansPage = () => {
             style={{ width: `${discoveryProgress.percent}%` }}
           ></div>
         </div>
+      </div>
+    );
+  }
+
+  if (siteError) {
+    return (
+      <div className="container mx-auto max-w-6xl space-y-8">
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangleIcon className="h-4 w-4" />
+          <AlertTitle>Site Selection Required</AlertTitle>
+          <AlertDescription>{siteError}</AlertDescription>
+          <div className="mt-4">
+            <Button 
+              onClick={() => navigate('/')} 
+              variant="outline" 
+              size="sm"
+            >
+              <FeatherIcon className="h-4 w-4 mr-2" />
+              Go to Sites
+            </Button>
+          </div>
+        </Alert>
       </div>
     );
   }
@@ -726,7 +760,7 @@ const VlansPage = () => {
         <CardFooter className="flex justify-between border-t px-6 py-4">
           <Button 
             variant="outline"
-            onClick={() => navigate("/devices")}
+            onClick={() => navigate(`/devices?site=${selectedSiteId}`)}
             disabled={loading}
           >
             Back

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -8,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { TabletSmartphoneIcon, SearchIcon, WifiIcon, AlertTriangleIcon } from "lucide-react";
+import { TabletSmartphoneIcon, SearchIcon, WifiIcon, AlertTriangleIcon, FeatherIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { discoverMacAddresses } from "@/utils/network/snmpDiscovery";
@@ -36,20 +35,19 @@ const MacAddressPage = () => {
   const location = useLocation();
   const { user } = useAuth();
 
-  // First, establish the selected site ID from URL or session storage
   useEffect(() => {
+    if (!user) return;
+
     const params = new URLSearchParams(location.search);
     const siteIdFromUrl = params.get('site');
     const storedSiteId = sessionStorage.getItem('selectedSiteId');
     
-    // Priority: URL param > session storage
     const siteId = siteIdFromUrl || storedSiteId;
     
     console.log(`MacAddressPage: Initial site ID check - URL: ${siteIdFromUrl}, Session: ${storedSiteId}, Using: ${siteId}`);
     
     if (siteId) {
       setSelectedSiteId(siteId);
-      // Ensure session storage is consistent with our selection
       if (siteId !== storedSiteId) {
         console.log(`MacAddressPage: Updating session storage with site ID: ${siteId}`);
         sessionStorage.setItem('selectedSiteId', siteId);
@@ -64,7 +62,7 @@ const MacAddressPage = () => {
         variant: "destructive",
       });
     }
-  }, [location.search, toast]);
+  }, [location.search, toast, user]);
 
   const fetchMacAddresses = async () => {
     if (!user) {
@@ -85,7 +83,6 @@ const MacAddressPage = () => {
       
       console.log(`MacAddressPage: Fetching MAC addresses for site ${selectedSiteId}`);
       
-      // Verify the site exists
       const { data: siteData, error: siteError } = await supabase
         .from('sites')
         .select('id, name')
@@ -101,14 +98,12 @@ const MacAddressPage = () => {
           description: "The selected site could not be found. Please select a valid site.",
           variant: "destructive",
         });
-        // Clear invalid site ID
         sessionStorage.removeItem('selectedSiteId');
         return;
       }
       
       console.log(`MacAddressPage: Verified site exists: ${siteData.name} (${siteData.id})`);
       
-      // First check if VLANs exist for this site
       const { data: vlans, error: vlansError, count: vlanCount } = await supabase
         .from('vlans')
         .select('*', { count: 'exact' })
@@ -141,7 +136,6 @@ const MacAddressPage = () => {
         return;
       }
       
-      // Check if subnets exist for this site
       const { data: subnets, error: subnetsError } = await supabase
         .from('subnets')
         .select('*')
@@ -173,7 +167,6 @@ const MacAddressPage = () => {
         return;
       }
       
-      // Find switch devices for this specific site
       const { data: devices, error: devicesError } = await supabase
         .from('devices')
         .select('*')
@@ -273,7 +266,6 @@ const MacAddressPage = () => {
     }
   };
 
-  // Wait until we have a site ID before attempting to fetch MAC addresses
   useEffect(() => {
     if (selectedSiteId && user) {
       console.log(`MacAddressPage: Triggering MAC address fetch for site ${selectedSiteId}`);
@@ -323,6 +315,35 @@ const MacAddressPage = () => {
     setError(null);
     fetchMacAddresses();
   };
+
+  if (error) {
+    return (
+      <div className="container mx-auto max-w-6xl space-y-8">
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangleIcon className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+          <div className="mt-4">
+            <Button 
+              onClick={() => error.includes("No site selected") ? navigate('/') : handleRetry()} 
+              variant="outline" 
+              size="sm"
+              disabled={loading}
+            >
+              {error.includes("No site selected") ? (
+                <>
+                  <FeatherIcon className="h-4 w-4 mr-2" />
+                  Go to Sites
+                </>
+              ) : (
+                "Retry"
+              )}
+            </Button>
+          </div>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto max-w-6xl space-y-8">
