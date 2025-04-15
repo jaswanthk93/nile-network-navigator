@@ -49,6 +49,35 @@ const WelcomePage = () => {
   const [sites, setSites] = useState<SiteWithStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const removeDefaultSite = async () => {
+    if (!user) return;
+
+    try {
+      const { data: defaultSites, error: fetchError } = await supabase
+        .from('sites')
+        .select('id')
+        .eq('name', 'Default Site')
+        .eq('user_id', user.id);
+
+      if (fetchError) {
+        console.error('Error fetching default sites:', fetchError);
+        return;
+      }
+
+      if (defaultSites && defaultSites.length > 0) {
+        const promises = defaultSites.map(site => 
+          supabase.from('sites').delete().eq('id', site.id)
+        );
+        
+        await Promise.all(promises);
+        
+        console.log(`Removed ${defaultSites.length} default sites`);
+      }
+    } catch (error) {
+      console.error('Error removing default sites:', error);
+    }
+  };
+
   useEffect(() => {
     const fetchSites = async () => {
       if (!user) return;
@@ -56,6 +85,8 @@ const WelcomePage = () => {
       setIsLoading(true);
       
       try {
+        await removeDefaultSite();
+        
         const { data: sitesData, error: sitesError } = await supabase
           .from('sites')
           .select('*')
