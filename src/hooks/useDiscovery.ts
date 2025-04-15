@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -219,6 +218,16 @@ export const useDiscovery = (userId: string | undefined) => {
         });
       }
       
+      const { error: deleteMacError } = await supabase
+        .from('mac_addresses')
+        .delete()
+        .eq('subnet_id', subnetToScan.id)
+        .eq('user_id', userId);
+        
+      if (deleteMacError) {
+        console.error('Error deleting existing MAC addresses:', deleteMacError);
+      }
+      
       setDiscovery(prev => ({
         ...prev,
         status: "scanning",
@@ -226,10 +235,14 @@ export const useDiscovery = (userId: string | undefined) => {
       }));
       
       console.log("Starting discovery with backend connected:", backendStatus.connected);
+      
       const discoveredDevices = await discoverDevicesInSubnet(
         subnetsToScan[currentSubnetIndex].cidr,
         updateDiscoveryProgress,
-        true
+        true,
+        userId,
+        subnetToScan.site_id,
+        subnetToScan.id
       );
       
       const devicesNeedingVerification = discoveredDevices.filter(device => 

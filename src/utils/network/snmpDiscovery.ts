@@ -2,10 +2,12 @@
 import { DiscoveredMacAddress } from "@/types/network";
 import { executeSnmpWalk, callBackendApi } from "@/utils/apiClient";
 import { useToast, toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface MacAddressDiscoveryResult {
   macAddresses: DiscoveredMacAddress[];
   vlanIds: number[];
+  status?: string;
 }
 
 /**
@@ -77,13 +79,17 @@ export async function getDeviceInfoViaSNMP(
 /**
  * Discover MAC addresses on a switch using SNMP
  * Using a step-by-step approach with sorted VLANs
+ * Now with incremental processing to save MAC addresses as they are discovered
  */
 export async function discoverMacAddresses(
   ip: string,
   community: string = 'public',
   version: string = '2c',
   vlanIds: number[] = [],
-  progressCallback?: (message: string, progress: number) => void
+  progressCallback?: (message: string, progress: number) => void,
+  siteId?: string,
+  subnetId?: string,
+  userId?: string
 ): Promise<MacAddressDiscoveryResult> {
   try {
     if (progressCallback) {
@@ -140,23 +146,142 @@ export async function discoverMacAddresses(
         progressCallback(`Sending request to backend for MAC address discovery...`, 30);
       }
       
-      // Use a longer timeout for the API call (20 seconds)
-      const result = await callBackendApi<MacAddressDiscoveryResult>(endpoint, requestData, 20000);
-      
-      if (progressCallback) {
-        progressCallback(`MAC address discovery complete. Found ${result.macAddresses?.length || 0} MAC addresses.`, 100);
+      // If we have site, subnet and user IDs, we can save directly to the database
+      const canSaveToDatabase = !!(siteId && subnetId && userId);
+      if (canSaveToDatabase) {
+        console.log(`Will save MAC addresses directly to database for site: ${siteId}, subnet: ${subnetId}, user: ${userId}`);
+      } else {
+        console.log(`Missing information to save directly to database - will only return discovered MACs`);
       }
       
-      console.log(`MAC address discovery complete. Found ${result.macAddresses?.length || 0} MAC addresses across ${result.vlanIds?.length || 0} VLANs.`);
+      // Set up the collector array for MAC addresses
+      const allMacAddresses: DiscoveredMacAddress[] = [];
+      const batchSize = 25; // Batch size for Supabase inserts
+      let currentBatch: DiscoveredMacAddress[] = [];
       
-      if (result.macAddresses?.length > 0) {
+      // Use a longer timeout for the API call (30 seconds)
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || "http://localhost:3001/api"}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error (${response.status}): ${errorText}`);
+      }
+      
+      // Create a reader to handle the streamed response
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("Response body is not readable");
+      }
+      
+      // Process the chunked response
+      let textDecoder = new TextDecoder();
+      let partialChunk = '';
+      let processedMacs = 0;
+      
+      // Function to save a batch of MAC addresses to Supabase
+      const saveMacBatch = async (batch: DiscoveredMacAddress[]) => {
+        if (!canSaveToDatabase || batch.length === 0) return;
+        
+        try {
+          const macRecords = batch.map(mac => ({
+            mac_address: mac.macAddress,
+            vlan_id: mac.vlanId,
+            device_type: mac.deviceType || 'Unknown',
+            site_id: siteId,
+            subnet_id: subnetId,
+            user_id: userId
+          }));
+          
+          console.log(`Saving batch of ${macRecords.length} MAC addresses to database`);
+          
+          const { error } = await supabase
+            .from('mac_addresses')
+            .upsert(macRecords);
+          
+          if (error) {
+            console.error("Error saving MAC batch to database:", error);
+          } else {
+            console.log(`Successfully saved ${macRecords.length} MAC addresses to database`);
+          }
+        } catch (error) {
+          console.error("Error in saveMacBatch:", error);
+        }
+      };
+      
+      // Start reading the stream
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        // Convert the chunk to text and add it to any leftover partial chunk
+        const chunk = textDecoder.decode(value, { stream: true });
+        const textChunk = partialChunk + chunk;
+        partialChunk = '';
+        
+        try {
+          // Try to parse the JSON response
+          // The response is a stream, so we need to handle partial data
+          const result = JSON.parse(textChunk);
+          
+          // Process MAC addresses
+          if (result.macAddresses && Array.isArray(result.macAddresses)) {
+            allMacAddresses.push(...result.macAddresses);
+            processedMacs += result.macAddresses.length;
+            
+            if (progressCallback) {
+              progressCallback(`Discovered ${processedMacs} MAC addresses so far...`, 
+                Math.min(30 + (processedMacs / 10), 90));
+            }
+            
+            // Add to current batch for database saving
+            result.macAddresses.forEach((mac: DiscoveredMacAddress) => {
+              currentBatch.push(mac);
+              
+              // When batch size is reached, save to database
+              if (currentBatch.length >= batchSize) {
+                saveMacBatch([...currentBatch]);
+                currentBatch = [];
+              }
+            });
+          }
+        } catch (e) {
+          // If parsing fails, it's likely a partial chunk
+          partialChunk = textChunk;
+        }
+      }
+      
+      // Save any remaining MAC addresses in the current batch
+      if (currentBatch.length > 0) {
+        await saveMacBatch(currentBatch);
+      }
+      
+      if (progressCallback) {
+        progressCallback(`MAC address discovery complete. Found ${allMacAddresses.length} MAC addresses.`, 100);
+      }
+      
+      console.log(`MAC address discovery complete. Found ${allMacAddresses.length} MAC addresses.`);
+      
+      if (allMacAddresses.length === 0) {
+        console.warn("No MAC addresses were discovered. This could indicate a problem with the SNMP configuration or permissions.");
+        toast({
+          title: "No MAC Addresses Found",
+          description: "The discovery process completed but no MAC addresses were found. Check your device configuration and try again.",
+          variant: "default",
+        });
+      } else {
         // Log a sample of discovered MAC addresses (up to 5)
-        const sampleMacs = result.macAddresses.slice(0, 5);
+        const sampleMacs = allMacAddresses.slice(0, 5);
         console.log(`Sample of discovered MAC addresses:`, sampleMacs);
         
         // Log counts by VLAN
         const macsByVlan = new Map<number, number>();
-        result.macAddresses.forEach(mac => {
+        allMacAddresses.forEach(mac => {
           const count = macsByVlan.get(mac.vlanId) || 0;
           macsByVlan.set(mac.vlanId, count + 1);
         });
@@ -165,19 +290,13 @@ export async function discoverMacAddresses(
         macsByVlan.forEach((count, vlanId) => {
           console.log(`VLAN ${vlanId}: ${count} MAC addresses`);
         });
-      } else {
-        console.warn("No MAC addresses were discovered. This could indicate a problem with the SNMP configuration or permissions.");
-        toast({
-          title: "No MAC Addresses Found",
-          description: "The discovery process completed but no MAC addresses were found. Check your device configuration and try again.",
-          variant: "default",
-        });
       }
       
       // Ensure we return a properly formatted result
       return {
-        macAddresses: result.macAddresses || [],
-        vlanIds: result.vlanIds || uniquePriorityVlans
+        macAddresses: allMacAddresses,
+        vlanIds: uniquePriorityVlans,
+        status: 'success'
       };
     } catch (error) {
       console.error("Error in MAC address discovery:", error);

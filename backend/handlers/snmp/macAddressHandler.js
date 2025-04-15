@@ -17,7 +17,7 @@ const MAC_OIDS = {
 exports.discoverMacAddresses = async (req, res) => {
   try {
     // Extract session ID and VLAN ID from request
-    const { sessionId, ip, community = 'public', version = '2c', vlanId, vlanIds } = req.body;
+    const { sessionId, ip, community = 'public', version = '2c', vlanId, vlanIds, priorityOnly = false } = req.body;
     
     if (!ip && !sessionId) {
       logger.error('[SNMP] MAC discovery error: Missing IP address or session ID');
@@ -32,7 +32,8 @@ exports.discoverMacAddresses = async (req, res) => {
       community: community ? `${community.slice(0,2)}***` : null, // Mask the community string
       version,
       vlanId,
-      vlanIds: vlanIds ? `Array with ${vlanIds.length} VLANs` : null
+      vlanIds: vlanIds ? `Array with ${vlanIds.length} VLANs` : null,
+      priorityOnly
     }, null, 2));
     
     // Determine which VLANs to query
@@ -45,6 +46,11 @@ exports.discoverMacAddresses = async (req, res) => {
       // Sort vlans in ascending order
       vlans.sort((a, b) => a - b);
       logger.info(`[SNMP] Using provided list of ${vlans.length} unique VLANs in ascending order: ${vlans.join(', ')}`);
+      
+      // If priorityOnly is set, we'll only process this subset
+      if (priorityOnly) {
+        logger.info(`[SNMP] Priority mode enabled - will only process the specified VLANs`);
+      }
     } else if (vlanId) {
       // Query specific VLAN
       vlans = [vlanId];
@@ -67,6 +73,15 @@ exports.discoverMacAddresses = async (req, res) => {
     // Results storage
     const macAddresses = [];
     const processedVlans = new Set(); // Keep track of processed VLANs
+    
+    // Set up streaming response
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Transfer-Encoding', 'chunked');
+    
+    // Start the response with an opening object bracket
+    res.write('{"status":"processing","macAddresses":[');
+    
+    let isFirstChunk = true;
     
     // Execute a targeted walk for each VLAN, one at a time
     for (const vlan of vlans) {
@@ -97,6 +112,29 @@ exports.discoverMacAddresses = async (req, res) => {
         // Add the collected MAC addresses from this VLAN to the overall results
         macAddresses.push(...vlanMacs);
         
+        // Stream this VLAN's MAC addresses to the client
+        if (vlanMacs.length > 0) {
+          const chunkData = vlanMacs.map(mac => {
+            return {
+              macAddress: mac.macAddress,
+              vlanId: mac.vlanId,
+              deviceType: mac.deviceType
+            };
+          });
+          
+          // If not the first chunk, add a comma
+          if (!isFirstChunk && chunkData.length > 0) {
+            res.write(',');
+          }
+          
+          // Write MAC addresses for this VLAN, without the surrounding brackets
+          res.write(JSON.stringify(chunkData).slice(1, -1));
+          
+          if (isFirstChunk && chunkData.length > 0) {
+            isFirstChunk = false;
+          }
+        }
+        
         // Close this VLAN-specific session
         try {
           session.close();
@@ -111,26 +149,11 @@ exports.discoverMacAddresses = async (req, res) => {
       }
     }
     
-    // Return unique MAC addresses
-    const uniqueMacs = [];
-    const seenMacs = new Set();
+    // Complete the response
+    res.write(`],"vlanIds":[${Array.from(processedVlans).join(',')}],"status":"success"}`);
+    res.end();
     
-    macAddresses.forEach(mac => {
-      const key = `${mac.macAddress}-${mac.vlanId}`; // Create unique key with MAC + VLAN
-      if (!seenMacs.has(key)) {
-        seenMacs.add(key);
-        uniqueMacs.push(mac);
-      }
-    });
-    
-    logger.info(`[SNMP] MAC address discovery complete, found ${uniqueMacs.length} unique MAC addresses across ${processedVlans.size} VLANs`);
-    
-    // Return results
-    res.json({
-      status: 'success',
-      macAddresses: uniqueMacs,
-      vlanIds: Array.from(processedVlans) // Return processed VLANs
-    });
+    logger.info(`[SNMP] MAC address discovery complete, found ${macAddresses.length} MAC addresses across ${processedVlans.size} VLANs`);
   } catch (error) {
     logger.error('[SNMP] MAC address discovery error:', error);
     res.status(500).json({ error: error.message });
