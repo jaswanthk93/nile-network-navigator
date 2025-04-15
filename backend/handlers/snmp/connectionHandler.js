@@ -17,12 +17,12 @@ exports.connect = (req, res) => {
     
     const snmpVersion = version === '1' ? snmp.Version1 : snmp.Version2c;
     
-    // Create session
+    // Create session with reduced timeout and no retries
     const session = snmp.createSession(ip, community, {
       port,
       version: snmpVersion,
-      retries: 1,
-      timeout: 5000
+      retries: 0, // No retries
+      timeout: 2000 // Reduced timeout to 2 seconds
     });
     
     // Generate session ID

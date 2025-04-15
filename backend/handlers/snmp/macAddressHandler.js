@@ -83,12 +83,12 @@ exports.discoverMacAddresses = async (req, res) => {
         const vlanCommunity = vlan === 1 ? community : `${community}@${vlan}`;
         logger.info(`[SNMP] Executing targeted walk for VLAN ${vlan} using community string "${vlanCommunity}" and OID ${MAC_OIDS.bridgeMacToPort}`);
         
-        // Create a new session for this specific VLAN
+        // Create a new session for this specific VLAN with reduced timeout and no retries
         const snmpVersion = version === '1' ? snmp.Version1 : snmp.Version2c;
         const session = snmp.createSession(ip, vlanCommunity, {
           version: snmpVersion,
-          retries: 1,
-          timeout: 5000
+          retries: 0, // No retries
+          timeout: 2000 // Reduced timeout to 2 seconds
         });
         
         // Execute the specifically targeted walk for the MAC address table for this VLAN
@@ -107,6 +107,7 @@ exports.discoverMacAddresses = async (req, res) => {
         logger.info(`[SNMP] Completed MAC address discovery for VLAN ${vlan}, found ${vlanMacs.length} MAC addresses`);
       } catch (error) {
         logger.error(`[SNMP] Error querying MAC addresses for VLAN ${vlan}: ${error.message}`);
+        // Continue with next VLAN instead of failing completely
       }
     }
     
@@ -144,8 +145,14 @@ function walkMacAddressTable(session, oid, vlanId) {
   return new Promise((resolve, reject) => {
     // Store MAC addresses for this specific VLAN walk
     const vlanMacs = [];
+    // Add a timeout to prevent hanging
+    const walkTimeout = setTimeout(() => {
+      logger.warn(`[SNMP] Walk timeout for VLAN ${vlanId} after 3 seconds`);
+      resolve(vlanMacs); // Return whatever we've collected so far
+    }, 3000);
     
     function doneCb(error) {
+      clearTimeout(walkTimeout); // Clear the timeout
       if (error) {
         logger.error(`[SNMP] Error in MAC address walk for VLAN ${vlanId}: ${error.message}`);
         return reject(error);

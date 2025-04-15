@@ -1,5 +1,7 @@
+
 import { DiscoveredMacAddress } from "@/types/network";
 import { executeSnmpWalk, callBackendApi } from "@/utils/apiClient";
+import { useToast, toast } from "@/hooks/use-toast";
 
 interface MacAddressDiscoveryResult {
   macAddresses: DiscoveredMacAddress[];
@@ -92,6 +94,16 @@ export async function discoverMacAddresses(
     const sortedVlanIds = [...new Set(vlanIds)].sort((a, b) => a - b);
     console.log(`Starting MAC address discovery with ${sortedVlanIds.length} unique VLANs in ascending order: ${sortedVlanIds.join(', ')}`);
     
+    if (sortedVlanIds.length === 0) {
+      console.warn("No VLANs provided for MAC address discovery. Please discover VLANs first.");
+      toast({
+        title: "VLAN Discovery Required",
+        description: "No VLANs available. Please discover VLANs first before attempting MAC address discovery.",
+        variant: "destructive",
+      });
+      return { macAddresses: [], vlanIds: [] };
+    }
+    
     if (progressCallback) {
       progressCallback(`Using ${sortedVlanIds.length} VLANs for MAC address discovery...`, 10);
     }
@@ -142,6 +154,11 @@ export async function discoverMacAddresses(
         });
       } else {
         console.warn("No MAC addresses were discovered. This could indicate a problem with the SNMP configuration or permissions.");
+        toast({
+          title: "No MAC Addresses Found",
+          description: "The discovery process completed but no MAC addresses were found. Check your device configuration and try again.",
+          variant: "warning",
+        });
       }
       
       // Ensure we return a properly formatted result
@@ -154,10 +171,22 @@ export async function discoverMacAddresses(
       if (progressCallback) {
         progressCallback(`Error during MAC address discovery: ${error instanceof Error ? error.message : String(error)}`, 100);
       }
-      throw error;
+      
+      toast({
+        title: "MAC Discovery Failed",
+        description: error instanceof Error ? error.message : "Failed to discover MAC addresses. Check the device connection and try again.",
+        variant: "destructive",
+      });
+      
+      return { macAddresses: [], vlanIds: sortedVlanIds };
     }
   } catch (error) {
     console.error("Error in discoverMacAddresses:", error);
+    toast({
+      title: "MAC Discovery Error",
+      description: "An unexpected error occurred during MAC address discovery.",
+      variant: "destructive",
+    });
     throw error;
   }
 }

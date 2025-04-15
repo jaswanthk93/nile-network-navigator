@@ -1,23 +1,32 @@
 
 import { DiscoveredVlan } from "../types/network";
+import { toast } from "@/hooks/use-toast";
 
 // Configuration for the agent
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001/api"; // Use env var if available
+const DEFAULT_TIMEOUT = 10000; // 10 seconds default timeout
 
 /**
- * Handles API requests to the backend agent
+ * Handles API requests to the backend agent with timeout
  */
-export async function callBackendApi<T = any>(endpoint: string, data: any): Promise<T> {
+export async function callBackendApi<T = any>(endpoint: string, data: any, timeout: number = DEFAULT_TIMEOUT): Promise<T> {
   try {
     console.log(`Calling backend API: ${endpoint} with data:`, data);
+    
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
     
     const response = await fetch(`${BACKEND_URL}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId); // Clear the timeout
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -52,6 +61,12 @@ export async function callBackendApi<T = any>(endpoint: string, data: any): Prom
       }
     }
   } catch (error) {
+    // Handle AbortController timeout
+    if (error.name === 'AbortError') {
+      console.error(`Timeout after ${timeout/1000}s when calling ${endpoint}`);
+      throw new Error(`Request timeout after ${timeout/1000} seconds`);
+    }
+    
     console.error(`Error calling ${endpoint}:`, error);
     throw error;
   }
