@@ -1,3 +1,4 @@
+
 import { DiscoveredMacAddress } from "@/types/network";
 import { executeSnmpWalk, callBackendApi } from "@/utils/apiClient";
 import { useToast, toast } from "@/hooks/use-toast";
@@ -103,13 +104,24 @@ export async function discoverMacAddresses(
       return { macAddresses: [], vlanIds: [] };
     }
     
+    // Select a smaller subset of VLANs to improve performance
+    // This helps reduce the timeout risk by limiting the number of SNMP walks
+    const priorityVlans = sortedVlanIds.length > 5 
+      ? [1, ...sortedVlanIds.slice(0, 4)] // VLAN 1 plus first 4 VLANs
+      : sortedVlanIds;
+    
+    // Remove duplicates in case VLAN 1 was already in the list
+    const uniquePriorityVlans = [...new Set(priorityVlans)];
+    
+    console.log(`Using a priority subset of ${uniquePriorityVlans.length} VLANs for initial MAC discovery: ${uniquePriorityVlans.join(', ')}`);
+    
     if (progressCallback) {
-      progressCallback(`Using ${sortedVlanIds.length} VLANs for MAC address discovery...`, 10);
+      progressCallback(`Using ${uniquePriorityVlans.length} priority VLANs for MAC address discovery...`, 10);
     }
 
     try {
-      // Call backend API directly with detailed logging
-      console.log(`Calling backend API for MAC address discovery with sorted VLANs: ${sortedVlanIds.join(', ')}`);
+      // Call backend API with increased timeout for the initial request
+      console.log(`Calling backend API for MAC address discovery with priority VLANs: ${uniquePriorityVlans.join(', ')}`);
       
       const endpoint = "/snmp/discover-mac-addresses";
       console.log(`Full endpoint URL: ${import.meta.env.VITE_BACKEND_URL || "http://localhost:3001/api"}${endpoint}`);
@@ -118,16 +130,18 @@ export async function discoverMacAddresses(
         ip,
         community,
         version,
-        vlanIds: sortedVlanIds
+        vlanIds: uniquePriorityVlans,
+        priorityOnly: true  // Signal to the backend to only process these priority VLANs
       };
       
-      console.log(`Request data for MAC discovery:`, JSON.stringify(requestData, null, 2));
+      console.log(`Request data for priority MAC discovery:`, JSON.stringify(requestData, null, 2));
       
       if (progressCallback) {
         progressCallback(`Sending request to backend for MAC address discovery...`, 30);
       }
       
-      const result = await callBackendApi<MacAddressDiscoveryResult>(endpoint, requestData);
+      // Use a longer timeout for the API call (20 seconds)
+      const result = await callBackendApi<MacAddressDiscoveryResult>(endpoint, requestData, 20000);
       
       if (progressCallback) {
         progressCallback(`MAC address discovery complete. Found ${result.macAddresses?.length || 0} MAC addresses.`, 100);
@@ -163,7 +177,7 @@ export async function discoverMacAddresses(
       // Ensure we return a properly formatted result
       return {
         macAddresses: result.macAddresses || [],
-        vlanIds: result.vlanIds || sortedVlanIds
+        vlanIds: result.vlanIds || uniquePriorityVlans
       };
     } catch (error) {
       console.error("Error in MAC address discovery:", error);
@@ -177,7 +191,7 @@ export async function discoverMacAddresses(
         variant: "destructive",
       });
       
-      return { macAddresses: [], vlanIds: sortedVlanIds };
+      return { macAddresses: [], vlanIds: uniquePriorityVlans };
     }
   } catch (error) {
     console.error("Error in discoverMacAddresses:", error);

@@ -12,10 +12,14 @@ const DEFAULT_TIMEOUT = 10000; // 10 seconds default timeout
 export async function callBackendApi<T = any>(endpoint: string, data: any, timeout: number = DEFAULT_TIMEOUT): Promise<T> {
   try {
     console.log(`Calling backend API: ${endpoint} with data:`, data);
+    console.log(`Using timeout of ${timeout}ms for this request`);
     
     // Create AbortController for timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      console.error(`Request timeout after ${timeout/1000}s when calling ${endpoint}`);
+    }, timeout);
     
     const response = await fetch(`${BACKEND_URL}${endpoint}`, {
       method: 'POST',
@@ -64,7 +68,7 @@ export async function callBackendApi<T = any>(endpoint: string, data: any, timeo
     // Handle AbortController timeout
     if (error.name === 'AbortError') {
       console.error(`Timeout after ${timeout/1000}s when calling ${endpoint}`);
-      throw new Error(`Request timeout after ${timeout/1000} seconds`);
+      throw new Error(`Request timed out after ${timeout/1000} seconds. The operation was taking too long to complete.`);
     }
     
     console.error(`Error calling ${endpoint}:`, error);
