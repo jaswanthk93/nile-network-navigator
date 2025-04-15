@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { TabletSmartphoneIcon, SearchIcon, WifiIcon, AlertTriangleIcon, FeatherIcon } from "lucide-react";
+import { TabletSmartphoneIcon, SearchIcon, WifiIcon, AlertTriangleIcon, FeatherIcon, RefreshCcwIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { discoverMacAddresses } from "@/utils/network/snmpDiscovery";
@@ -104,9 +104,9 @@ const MacAddressPage = () => {
       
       console.log(`MacAddressPage: Verified site exists: ${siteData.name} (${siteData.id})`);
       
-      const { data: vlans, error: vlansError, count: vlanCount } = await supabase
+      const { data: vlans, error: vlansError } = await supabase
         .from('vlans')
-        .select('*', { count: 'exact' })
+        .select('*')
         .eq('site_id', selectedSiteId);
         
       if (vlansError) {
@@ -211,46 +211,56 @@ const MacAddressPage = () => {
         description: `Using SNMP to discover MAC addresses on ${switchIp}...`,
       });
       
-      const macAddressResults = await discoverMacAddresses(
-        switchIp,
-        community,
-        version,
-        (message: string, progress: number) => {
-          console.log(`MAC discovery progress: ${message} (${progress}%)`);
-        }
-      );
-      
-      console.log(`Discovered ${macAddressResults.macAddresses.length} MAC addresses across ${macAddressResults.vlanIds.length} VLANs for site ${selectedSiteId}`);
-      
-      const vlanMap = new Map();
-      vlans.forEach(vlan => {
-        vlanMap.set(vlan.vlan_id, vlan.name || `VLAN ${vlan.vlan_id}`);
-      });
-      
-      const transformedMacs = macAddressResults.macAddresses.map((mac, index) => ({
-        id: `mac-${index}`,
-        macAddress: mac.macAddress,
-        vlanId: mac.vlanId,
-        segmentName: vlanMap.get(mac.vlanId) || `VLAN ${mac.vlanId}`,
-        deviceType: mac.deviceType || 'Unknown',
-        port: mac.port || undefined,
-        selected: true
-      }));
-      
-      setMacAddresses(transformedMacs);
-      
-      if (transformedMacs.length === 0) {
-        setError("No MAC addresses found. The switch did not return any MAC address information.");
-        toast({
-          title: "No MAC Addresses Found",
-          description: "No MAC addresses were discovered on the network.",
-          variant: "destructive",
+      try {
+        const macAddressResults = await discoverMacAddresses(
+          switchIp,
+          community,
+          version,
+          (message: string, progress: number) => {
+            console.log(`MAC discovery progress: ${message} (${progress}%)`);
+          }
+        );
+        
+        console.log(`Discovered ${macAddressResults.macAddresses.length} MAC addresses across ${macAddressResults.vlanIds.length} VLANs for site ${selectedSiteId}`);
+        
+        const vlanMap = new Map();
+        vlans.forEach(vlan => {
+          vlanMap.set(vlan.vlan_id, vlan.name || `VLAN ${vlan.vlan_id}`);
         });
-      } else {
-        setError(null);
+        
+        const transformedMacs = macAddressResults.macAddresses.map((mac, index) => ({
+          id: `mac-${index}`,
+          macAddress: mac.macAddress,
+          vlanId: mac.vlanId,
+          segmentName: vlanMap.get(mac.vlanId) || `VLAN ${mac.vlanId}`,
+          deviceType: mac.deviceType || 'Unknown',
+          port: mac.port || undefined,
+          selected: true
+        }));
+        
+        setMacAddresses(transformedMacs);
+        
+        if (transformedMacs.length === 0) {
+          setError("No MAC addresses found. The switch did not return any MAC address information.");
+          toast({
+            title: "No MAC Addresses Found",
+            description: "No MAC addresses were discovered on the network.",
+            variant: "destructive",
+          });
+        } else {
+          setError(null);
+          toast({
+            title: "MAC Addresses Discovered",
+            description: `Successfully discovered ${transformedMacs.length} MAC addresses.`,
+          });
+        }
+      } catch (macDiscoveryError) {
+        console.error("Error discovering MAC addresses:", macDiscoveryError);
+        setError(macDiscoveryError instanceof Error ? macDiscoveryError.message : "Failed to discover MAC addresses");
         toast({
-          title: "MAC Addresses Discovered",
-          description: `Successfully discovered ${transformedMacs.length} MAC addresses.`,
+          title: "MAC Discovery Error",
+          description: macDiscoveryError instanceof Error ? macDiscoveryError.message : "An error occurred during MAC address discovery",
+          variant: "destructive",
         });
       }
     } catch (error) {
@@ -313,6 +323,7 @@ const MacAddressPage = () => {
   const handleRetry = () => {
     setLoading(true);
     setError(null);
+    console.log("Retrying MAC address discovery...");
     fetchMacAddresses();
   };
 
@@ -322,13 +333,20 @@ const MacAddressPage = () => {
         <Alert variant="destructive" className="mb-6">
           <AlertTriangleIcon className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>
+            {error}
+            <div className="mt-2 text-sm text-muted-foreground">
+              This could be due to network connectivity issues or problems communicating with the switch device. 
+              Please check your network connection and try again.
+            </div>
+          </AlertDescription>
           <div className="mt-4">
             <Button 
               onClick={() => error.includes("No site selected") ? navigate('/') : handleRetry()} 
               variant="outline" 
               size="sm"
               disabled={loading}
+              className="mr-2"
             >
               {error.includes("No site selected") ? (
                 <>
@@ -336,7 +354,10 @@ const MacAddressPage = () => {
                   Go to Sites
                 </>
               ) : (
-                "Retry"
+                <>
+                  <RefreshCcwIcon className="h-4 w-4 mr-2" />
+                  Retry Discovery
+                </>
               )}
             </Button>
           </div>

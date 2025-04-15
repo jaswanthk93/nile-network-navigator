@@ -137,7 +137,7 @@ export async function executeSnmpQueries(
 
 /**
  * Execute SNMP WALK on a connected switch
- * Updated to match the usage in snmpDiscovery.ts
+ * Updated to handle HTML responses and provide better error logging
  */
 export async function executeSnmpWalk(
   deviceIp: string,
@@ -146,15 +146,49 @@ export async function executeSnmpWalk(
   try {
     console.log(`Executing SNMP WALK on device ${deviceIp} for OID ${oid}...`);
     
-    const result = await callBackendApi("/snmp/walk", {
-      ip: deviceIp,
-      oid
+    const response = await fetch(`${BACKEND_URL}/snmp/walk`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        ip: deviceIp,
+        oid
+      })
     });
     
-    return result;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`SNMP walk error (${response.status}): ${errorText}`);
+      return { error: `API error (${response.status}): ${errorText}` };
+    }
+    
+    // Check content type to avoid HTML parsing errors
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      const result = await response.json();
+      console.log(`SNMP walk response for ${deviceIp} and OID ${oid}:`, result);
+      return result;
+    } else {
+      const text = await response.text();
+      console.error(`Received non-JSON response from SNMP walk:`, text.substring(0, 200));
+      
+      // Check if it's HTML
+      if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html")) {
+        return { error: "Received HTML instead of JSON from SNMP walk" };
+      }
+      
+      // Try to parse as JSON anyway
+      try {
+        const result = JSON.parse(text);
+        return result;
+      } catch (parseError) {
+        return { error: `Invalid response format: ${text.substring(0, 100)}...` };
+      }
+    }
   } catch (error) {
     console.error("Error executing SNMP WALK:", error);
-    return { error };
+    return { error: error instanceof Error ? error.message : String(error) };
   }
 }
 
