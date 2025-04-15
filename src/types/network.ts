@@ -16,6 +16,7 @@ export interface DiscoveredMacAddress {
   macAddress: string;
   vlanId: number;
   deviceType?: string;
+  port?: string;
 }
 
 /**
@@ -108,4 +109,28 @@ export interface DeviceDiscoveryResult {
   hostname?: string;
   mac_address?: string;
   macAddresses?: DiscoveredMacAddress[];
+  sysName?: string;
+  sysDescr?: string;
+  make?: string;
+  model?: string;
+  category?: string;
+  status?: string;
+  confirmed?: boolean;
+  needs_verification?: boolean;
+}
+
+/**
+ * Interface for MAC address data from database
+ */
+export interface MacAddressData {
+  id: string;
+  mac_address: string;
+  vlan_id: number;
+  device_type: string | null;
+  site_id: string;
+  subnet_id: string;
+  user_id: string;
+  discovered_at: string;
+  last_seen: string;
+  is_active: boolean | null;
 }

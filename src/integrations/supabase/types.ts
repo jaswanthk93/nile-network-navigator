@@ -81,6 +81,60 @@ export type Database = {
           },
         ]
       }
+      mac_addresses: {
+        Row: {
+          device_type: string | null
+          discovered_at: string
+          id: string
+          is_active: boolean | null
+          last_seen: string
+          mac_address: string
+          site_id: string
+          subnet_id: string
+          user_id: string
+          vlan_id: number
+        }
+        Insert: {
+          device_type?: string | null
+          discovered_at?: string
+          id?: string
+          is_active?: boolean | null
+          last_seen?: string
+          mac_address: string
+          site_id: string
+          subnet_id: string
+          user_id: string
+          vlan_id: number
+        }
+        Update: {
+          device_type?: string | null
+          discovered_at?: string
+          id?: string
+          is_active?: boolean | null
+          last_seen?: string
+          mac_address?: string
+          site_id?: string
+          subnet_id?: string
+          user_id?: string
+          vlan_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mac_addresses_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mac_addresses_subnet_id_fkey"
+            columns: ["subnet_id"]
+            isOneToOne: false
+            referencedRelation: "subnets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sites: {
         Row: {
           created_at: string

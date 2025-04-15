@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { discoverMacAddresses } from "@/utils/network/snmpDiscovery";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { MacAddressIcon } from "@/components/MacAddressIcon";
 
 interface MacAddress {
   id: string;
@@ -36,6 +38,7 @@ const MacAddressPage = () => {
   const location = useLocation();
   const { user } = useAuth();
 
+  // Initialize site ID from URL or session storage
   useEffect(() => {
     if (!user) return;
 
@@ -65,6 +68,7 @@ const MacAddressPage = () => {
     }
   }, [location.search, toast, user]);
 
+  // Fetch VLANs from database for the selected site
   const fetchVlansFromDatabase = async (siteId: string) => {
     try {
       console.log(`Fetching VLANs from database for site ${siteId}`);
@@ -92,6 +96,7 @@ const MacAddressPage = () => {
     }
   };
 
+  // Main function to fetch MAC addresses either from database or via discovery
   const fetchMacAddresses = async () => {
     if (!user) {
       navigate('/login');
@@ -111,6 +116,7 @@ const MacAddressPage = () => {
       
       console.log(`MacAddressPage: Fetching MAC addresses for site ${selectedSiteId}`);
       
+      // First, verify the site exists
       const { data: siteData, error: siteError } = await supabase
         .from('sites')
         .select('id, name')
@@ -131,7 +137,43 @@ const MacAddressPage = () => {
       }
       
       console.log(`MacAddressPage: Verified site exists: ${siteData.name} (${siteData.id})`);
+
+      // First, check if MAC addresses already exist in the database
+      const { data: existingMacAddresses, error: macError } = await supabase
+        .from('mac_addresses')
+        .select('*')
+        .eq('site_id', selectedSiteId);
+        
+      if (!macError && existingMacAddresses && existingMacAddresses.length > 0) {
+        console.log(`Found ${existingMacAddresses.length} existing MAC addresses in database for site ${selectedSiteId}`);
+        
+        // Fetch VLANs to get names
+        const vlans = await fetchVlansFromDatabase(selectedSiteId);
+        setDbVlans(vlans);
+        
+        // Create a map of VLAN ID to name
+        const vlanMap = new Map();
+        vlans.forEach(vlan => {
+          vlanMap.set(vlan.vlan_id, vlan.name || `VLAN ${vlan.vlan_id}`);
+        });
+        
+        // Transform stored MAC addresses to display format
+        const transformedMacs = existingMacAddresses.map((mac, index) => ({
+          id: mac.id,
+          macAddress: mac.mac_address,
+          vlanId: mac.vlan_id,
+          segmentName: vlanMap.get(mac.vlan_id) || `VLAN ${mac.vlan_id}`,
+          deviceType: mac.device_type || 'Unknown',
+          port: undefined,  // Port info not stored in database
+          selected: true
+        }));
+        
+        setMacAddresses(transformedMacs);
+        setLoading(false);
+        return;
+      }
       
+      // No MAC addresses in database, need to discover them
       try {
         const vlans = await fetchVlansFromDatabase(selectedSiteId);
         setDbVlans(vlans);
@@ -252,7 +294,7 @@ const MacAddressPage = () => {
             vlanId: mac.vlanId,
             segmentName: vlanMap.get(mac.vlanId) || `VLAN ${mac.vlanId}`,
             deviceType: mac.deviceType || 'Unknown',
-            port: mac.port || undefined,
+            port: mac.port,
             selected: true
           }));
           
@@ -271,6 +313,29 @@ const MacAddressPage = () => {
               title: "MAC Addresses Discovered",
               description: `Successfully discovered ${transformedMacs.length} MAC addresses.`,
             });
+            
+            // Save the discovered MAC addresses to the database
+            const macAddressRecords = transformedMacs.map(mac => ({
+              mac_address: mac.macAddress,
+              vlan_id: mac.vlanId,
+              device_type: mac.deviceType || 'Unknown',
+              site_id: selectedSiteId,
+              subnet_id: subnet.id,
+              user_id: user.id
+            }));
+            
+            const { error: saveError } = await supabase
+              .from('mac_addresses')
+              .insert(macAddressRecords)
+              .onConflict(['mac_address', 'vlan_id', 'site_id'])
+              .merge(['last_seen', 'is_active']);
+              
+            if (saveError) {
+              console.error("Error saving MAC addresses to database:", saveError);
+              // Not raising this as a user-facing error since the discovery was successful
+            } else {
+              console.log(`Successfully saved ${macAddressRecords.length} MAC addresses to database`);
+            }
           }
         } catch (macDiscoveryError) {
           console.error("Error discovering MAC addresses:", macDiscoveryError);
@@ -303,6 +368,7 @@ const MacAddressPage = () => {
     }
   };
 
+  // Fetch MAC addresses when site ID is set
   useEffect(() => {
     if (selectedSiteId && user) {
       console.log(`MacAddressPage: Triggering MAC address fetch for site ${selectedSiteId}`);
@@ -310,6 +376,7 @@ const MacAddressPage = () => {
     }
   }, [selectedSiteId, user]);
 
+  // Filter MAC addresses based on search and segment filter
   const filteredMacAddresses = macAddresses.filter(mac => {
     const matchesSearch = mac.macAddress.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           mac.deviceType.toLowerCase().includes(searchTerm.toLowerCase());
@@ -317,18 +384,22 @@ const MacAddressPage = () => {
     return matchesSearch && matchesSegment;
   });
 
+  // Get unique segments for filtering
   const segments = Array.from(new Set(macAddresses.map(mac => mac.segmentName)));
 
+  // Toggle selection of a single MAC address
   const toggleMacSelection = (id: string) => {
     setMacAddresses(macAddresses.map(mac => 
       mac.id === id ? { ...mac, selected: !mac.selected } : mac
     ));
   };
 
+  // Toggle selection of all MAC addresses
   const toggleAll = (selected: boolean) => {
     setMacAddresses(macAddresses.map(mac => ({ ...mac, selected })));
   };
 
+  // Navigate to next page
   const handleNext = () => {
     const selectedCount = macAddresses.filter(mac => mac.selected).length;
     if (selectedCount === 0) {
@@ -347,6 +418,7 @@ const MacAddressPage = () => {
     navigate(`/export?site=${selectedSiteId}`);
   };
 
+  // Retry MAC address discovery
   const handleRetry = () => {
     setLoading(true);
     setError(null);
@@ -354,6 +426,7 @@ const MacAddressPage = () => {
     fetchMacAddresses();
   };
 
+  // Show error state
   if (error) {
     return (
       <div className="container mx-auto max-w-6xl space-y-8">
@@ -405,7 +478,7 @@ const MacAddressPage = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <TabletSmartphoneIcon className="h-5 w-5" />
+            <MacAddressIcon className="h-5 w-5" />
             MAC Addresses
           </CardTitle>
           <CardDescription>

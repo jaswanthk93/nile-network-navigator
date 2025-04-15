@@ -1,7 +1,10 @@
 
 import { supabase } from "@/integrations/supabase/client";
-import { SubnetData } from "@/types/network";
+import { SubnetData, DiscoveredMacAddress } from "@/types/network";
 
+/**
+ * Save discovered devices to the database
+ */
 export async function saveDiscoveredDevices(
   devices: any[],
   siteId: string,
@@ -39,27 +42,30 @@ export async function saveDiscoveredDevices(
         console.error('Error inserting device:', deviceError);
         return { error: deviceError };
       }
-    }
-
-    // Handle MAC address discovery if available
-    if (device.macAddresses && device.macAddresses.length > 0) {
-      const macAddressRecords = device.macAddresses.map(mac => ({
-        mac_address: mac.macAddress,
-        vlan_id: mac.vlanId,
-        device_type: mac.deviceType || 'Unknown',
-        site_id: siteId,
-        subnet_id: subnetId,
-        user_id: userId
-      }));
-
-      const { error: macError } = await supabase
-        .from('mac_addresses')
-        .insert(macAddressRecords)
-        .on('conflict', 'do nothing');  // Ignore duplicates
       
-      if (macError) {
-        console.error('Error inserting MAC addresses:', macError);
-        return { error: macError };
+      // Process MAC addresses if available
+      if (device.macAddresses && Array.isArray(device.macAddresses) && device.macAddresses.length > 0) {
+        console.log(`Processing ${device.macAddresses.length} MAC addresses for device ${device.ip_address}`);
+        
+        const macAddressRecords = device.macAddresses.map((mac: DiscoveredMacAddress) => ({
+          mac_address: mac.macAddress,
+          vlan_id: mac.vlanId,
+          device_type: mac.deviceType || 'Unknown',
+          site_id: siteId,
+          subnet_id: subnetId,
+          user_id: userId
+        }));
+
+        const { error: macError } = await supabase
+          .from('mac_addresses')
+          .insert(macAddressRecords)
+          .onConflict(['mac_address', 'vlan_id', 'site_id'])
+          .merge(['last_seen', 'is_active']);
+        
+        if (macError) {
+          console.error('Error inserting MAC addresses:', macError);
+          return { error: macError };
+        }
       }
     }
     
