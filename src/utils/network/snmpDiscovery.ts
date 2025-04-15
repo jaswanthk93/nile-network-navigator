@@ -1,4 +1,3 @@
-
 import { DiscoveredMacAddress } from "@/types/network";
 import { executeSnmpWalk, callBackendApi } from "@/utils/apiClient";
 import { useToast, toast } from "@/hooks/use-toast";
@@ -99,7 +98,7 @@ export async function discoverMacAddresses(
       toast({
         title: "VLAN Discovery Required",
         description: "No VLANs available. Please discover VLANs first before attempting MAC address discovery.",
-        variant: "destructive",
+        variant: "default",
       });
       return { macAddresses: [], vlanIds: [] };
     }
@@ -157,7 +156,7 @@ export async function discoverMacAddresses(
         toast({
           title: "No MAC Addresses Found",
           description: "The discovery process completed but no MAC addresses were found. Check your device configuration and try again.",
-          variant: "warning",
+          variant: "default",
         });
       }
       
