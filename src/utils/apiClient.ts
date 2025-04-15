@@ -24,9 +24,32 @@ export async function callBackendApi<T = any>(endpoint: string, data: any): Prom
       throw new Error(`API error (${response.status}): ${errorText}`);
     }
     
-    const result = await response.json();
-    console.log(`Backend API response from ${endpoint}:`, result);
-    return result;
+    // Check the content type to avoid parsing HTML as JSON
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      const result = await response.json();
+      console.log(`Backend API response from ${endpoint}:`, result);
+      return result;
+    } else {
+      // Handle non-JSON responses
+      const text = await response.text();
+      
+      // Check if it's HTML (which would cause the JSON parse error)
+      if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html")) {
+        console.error(`Received HTML instead of JSON from ${endpoint}`);
+        throw new Error(`Received HTML response instead of JSON from ${endpoint}`);
+      }
+      
+      // For other text responses, try to parse as JSON if possible
+      try {
+        const result = JSON.parse(text);
+        console.log(`Backend API response from ${endpoint}:`, result);
+        return result;
+      } catch (parseError) {
+        console.error(`Response is not valid JSON from ${endpoint}:`, text);
+        throw new Error(`Invalid JSON response from ${endpoint}: ${text.substring(0, 100)}...`);
+      }
+    }
   } catch (error) {
     console.error(`Error calling ${endpoint}:`, error);
     throw error;
