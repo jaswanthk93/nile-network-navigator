@@ -1,14 +1,7 @@
 
-/**
- * Subnet management utilities
- */
-
 import { supabase } from "@/integrations/supabase/client";
 import { SubnetData } from "@/types/network";
 
-/**
- * Save discovered devices to the database
- */
 export async function saveDiscoveredDevices(
   devices: any[],
   siteId: string,
@@ -18,15 +11,15 @@ export async function saveDiscoveredDevices(
   try {
     console.log('Saving discovered devices:', devices.length);
     
-    // For each device, write to the database
     for (const device of devices) {
       console.log('Processing device:', device);
       
-      // Add site_id, subnet_id, and user_id to each device record
-      // Ensure all property names match database column names (lowercase)
+      // Prioritize SNMP discovered hostname over existing hostname
+      const deviceHostname = device.sysName || device.hostname || null;
+      
       const deviceRecord = {
         ip_address: device.ip_address,
-        hostname: device.hostname || null,
+        hostname: deviceHostname,  // Use SNMP hostname first
         mac_address: device.mac_address || null,
         make: device.make || null,
         model: device.model || null,
@@ -37,13 +30,11 @@ export async function saveDiscoveredDevices(
         user_id: userId,
         confirmed: device.confirmed || false,
         needs_verification: device.needs_verification || true,
-        // Fix the column name - important: use lowercase 'sysdescr' to match database column
-        sysdescr: device.sysDescr || null  // Explicitly map from sysDescr to sysdescr
+        sysdescr: device.sysDescr || null
       };
       
       console.log('Prepared device record:', deviceRecord);
       
-      // Insert the device record
       const { error } = await supabase
         .from('devices')
         .insert(deviceRecord);
@@ -58,39 +49,5 @@ export async function saveDiscoveredDevices(
   } catch (error) {
     console.error('Error saving devices:', error);
     return { error: error instanceof Error ? error : new Error('Unknown error saving devices') };
-  }
-}
-
-/**
- * Fetch subnets from the database
- */
-export async function fetchSubnets(userId: string): Promise<{ data: SubnetData[] | null, error: Error | null }> {
-  try {
-    const { data, error } = await supabase
-      .from('subnets')
-      .select('*')
-      .eq('user_id', userId);
-      
-    if (error) {
-      return { data: null, error: new Error(error.message) };
-    }
-    
-    // Add type casting to ensure data conforms to SubnetData interface
-    // This handles the case where access_method might be null or an invalid value
-    const typedData: SubnetData[] = data.map(subnet => ({
-      ...subnet,
-      // Type casting for access_method to match SubnetData type
-      access_method: (subnet.access_method as "snmp" | "ssh" | "telnet" | null),
-      // Type casting for other fields that might need it
-      snmp_version: subnet.snmp_version as "1" | "2c" | "3" | null
-    }));
-    
-    return { data: typedData, error: null };
-  } catch (error) {
-    console.error('Error fetching subnets:', error);
-    return { 
-      data: null, 
-      error: error instanceof Error ? error : new Error('Unknown error fetching subnets') 
-    };
   }
 }
