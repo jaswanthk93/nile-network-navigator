@@ -47,6 +47,8 @@ export function SiteNavigation() {
         }
         
         console.log(`SiteNavigation: Fetched ${data?.length || 0} sites for user ${user.id}`);
+        console.log("Sites data:", data);
+        
         setSites(data || []);
         
         // Only auto-select a site if we're not in new site creation mode

@@ -25,7 +25,7 @@ export async function discoverVlans(
     ifDescr?: { oid: string; value: string; ifIndex: number; vlanId: number }[];
   };
 }> {
-  console.log(`Discovering VLANs from ${ip} via SNMP...`);
+  console.log(`Discovering VLANs from ${ip} via SNMP with community ${community} and version ${version}...`);
   
   try {
     // Get device hostname first
@@ -34,10 +34,11 @@ export async function discoverVlans(
       deviceHostname = await getDeviceHostname(ip, community, version);
       console.log(`Using hostname for device: ${deviceHostname || 'Not available'}`);
     } catch (e) {
-      console.warn(`Could not retrieve device hostname: ${e.message}`);
+      console.warn(`Could not retrieve device hostname: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
     
     // Use the backend agent for VLAN discovery
+    console.log(`Calling backend API for VLAN discovery on ${ip}`);
     const result = await callBackendApi("/snmp/discover-vlans", {
       ip,
       community,
@@ -45,8 +46,10 @@ export async function discoverVlans(
       make
     });
     
+    console.log(`VLAN discovery API response for ${ip}:`, result);
+    
     if (!result.vlans || !Array.isArray(result.vlans)) {
-      console.error("Invalid response format from VLAN discovery");
+      console.error("Invalid response format from VLAN discovery:", result);
       return { vlans: [], rawData: { vlanState: [], vlanName: [] } };
     }
     

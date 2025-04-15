@@ -57,6 +57,7 @@ const MacAddressPage = () => {
     } else {
       console.warn("MacAddressPage: No site ID found in URL or session storage");
       setError("No site selected. Please select a site from the sidebar first.");
+      setLoading(false);
       toast({
         title: "No Site Selected",
         description: "Please select a site from the sidebar first.",
@@ -83,6 +84,29 @@ const MacAddressPage = () => {
       setError(null);
       
       console.log(`MacAddressPage: Fetching MAC addresses for site ${selectedSiteId}`);
+      
+      // Verify the site exists
+      const { data: siteData, error: siteError } = await supabase
+        .from('sites')
+        .select('id, name')
+        .eq('id', selectedSiteId)
+        .single();
+        
+      if (siteError || !siteData) {
+        console.error("Error verifying site:", siteError || "Site not found");
+        setError("Site not found. Please select a valid site from the sidebar.");
+        setLoading(false);
+        toast({
+          title: "Site Not Found",
+          description: "The selected site could not be found. Please select a valid site.",
+          variant: "destructive",
+        });
+        // Clear invalid site ID
+        sessionStorage.removeItem('selectedSiteId');
+        return;
+      }
+      
+      console.log(`MacAddressPage: Verified site exists: ${siteData.name} (${siteData.id})`);
       
       // First check if VLANs exist for this site
       const { data: vlans, error: vlansError, count: vlanCount } = await supabase
