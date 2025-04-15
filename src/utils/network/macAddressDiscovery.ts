@@ -1,3 +1,4 @@
+
 import { discoverMacAddresses } from "./snmpDiscovery";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -113,11 +114,16 @@ export async function fetchMacAddressesForSite(
     
     console.log(`Using switch ${switchIp} with community ${community} and version ${version}`);
     
+    // Extract VLAN IDs from the database records
+    const vlanIds = vlans.map(vlan => vlan.vlan_id);
+    console.log(`Using VLAN IDs: ${vlanIds.join(', ')}`);
+    
     // Get MAC addresses from the switch using our discoverMacAddresses function
     const macAddressResults = await discoverMacAddresses(
       switchIp,
       community,
       version,
+      vlanIds,
       progressCallback
     );
     

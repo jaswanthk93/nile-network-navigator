@@ -24,7 +24,7 @@ exports.discoverMacAddresses = async (req, res) => {
     }
     
     // Log the operation
-    logger.info(`[SNMP] Starting MAC address discovery for ${ip || 'session ' + sessionId}${vlanId ? ` on VLAN ${vlanId}` : ''}`);
+    console.log(`[SNMP] Starting MAC address discovery for ${ip || 'session ' + sessionId}${vlanId ? ` on VLAN ${vlanId}` : ''}`);
     
     // Determine which VLANs to query
     let vlans = [];
@@ -32,20 +32,20 @@ exports.discoverMacAddresses = async (req, res) => {
     if (vlanIds && Array.isArray(vlanIds) && vlanIds.length > 0) {
       // Use the provided list of VLAN IDs
       vlans = vlanIds;
-      logger.info(`[SNMP] Using provided list of ${vlans.length} VLANs: ${vlans.join(', ')}`);
+      console.log(`[SNMP] Using provided list of ${vlans.length} VLANs: ${vlans.join(', ')}`);
     } else if (vlanId) {
       // Query specific VLAN
       vlans = [vlanId];
-      logger.info(`[SNMP] Using single VLAN: ${vlanId}`);
+      console.log(`[SNMP] Using single VLAN: ${vlanId}`);
     } else {
       // First discover VLANs, then query each one
       try {
-        logger.info(`[SNMP] No VLANs specified, discovering VLANs first`);
+        console.log(`[SNMP] No VLANs specified, discovering VLANs first`);
         const vlanResult = await vlanHandler.discoverVlans(ip, community, version);
         vlans = vlanResult.vlans.map(vlan => vlan.vlanId);
-        logger.info(`[SNMP] Discovered ${vlans.length} VLANs for MAC address lookup: ${vlans.join(', ')}`);
+        console.log(`[SNMP] Discovered ${vlans.length} VLANs for MAC address lookup: ${vlans.join(', ')}`);
       } catch (error) {
-        logger.warn(`[SNMP] Failed to discover VLANs: ${error.message}. Will use default VLAN 1`);
+        console.log(`[SNMP] Failed to discover VLANs: ${error.message}. Will use default VLAN 1`);
         vlans = [1]; // Default to VLAN 1 if VLAN discovery fails
       }
     }
@@ -58,7 +58,7 @@ exports.discoverMacAddresses = async (req, res) => {
       try {
         // Create community string with VLAN ID as per the requested format: "public@101"
         const vlanCommunity = vlan === 1 ? community : `${community}@${vlan}`;
-        logger.info(`[SNMP] Executing targeted walk for VLAN ${vlan} using community string "${vlanCommunity}" and OID ${MAC_OIDS.bridgeMacToPort}`);
+        console.log(`[SNMP] Executing targeted walk for VLAN ${vlan} using community string "${vlanCommunity}" and OID ${MAC_OIDS.bridgeMacToPort}`);
         
         // Create a new session for this specific VLAN
         const snmpVersion = version === '1' ? snmp.Version1 : snmp.Version2c;
@@ -75,12 +75,12 @@ exports.discoverMacAddresses = async (req, res) => {
         try {
           session.close();
         } catch (e) {
-          logger.error(`[SNMP] Error closing session for VLAN ${vlan}: ${e.message}`);
+          console.error(`[SNMP] Error closing session for VLAN ${vlan}: ${e.message}`);
         }
         
-        logger.info(`[SNMP] Completed MAC address discovery for VLAN ${vlan}, found ${macAddresses.length} MAC addresses so far`);
+        console.log(`[SNMP] Completed MAC address discovery for VLAN ${vlan}, found ${macAddresses.length} MAC addresses so far`);
       } catch (error) {
-        logger.error(`[SNMP] Error querying MAC addresses for VLAN ${vlan}: ${error.message}`);
+        console.error(`[SNMP] Error querying MAC addresses for VLAN ${vlan}: ${error.message}`);
       }
     }
     
@@ -95,7 +95,7 @@ exports.discoverMacAddresses = async (req, res) => {
       }
     });
     
-    logger.info(`[SNMP] MAC address discovery complete, found ${uniqueMacs.length} unique MAC addresses across ${vlans.length} VLANs`);
+    console.log(`[SNMP] MAC address discovery complete, found ${uniqueMacs.length} unique MAC addresses across ${vlans.length} VLANs`);
     
     // Return results
     res.json({
@@ -104,7 +104,7 @@ exports.discoverMacAddresses = async (req, res) => {
       vlanIds: vlans
     });
   } catch (error) {
-    logger.error('[SNMP] MAC address discovery error:', error);
+    console.error('[SNMP] MAC address discovery error:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -124,7 +124,7 @@ function walkMacAddressTable(session, oid, vlanId, macAddresses) {
     function feedCb(varbinds) {
       for (const varbind of varbinds) {
         if (snmp.isVarbindError(varbind)) {
-          logger.warn(`SNMP walk varbind error: ${snmp.varbindError(varbind)}`);
+          console.warn(`SNMP walk varbind error: ${snmp.varbindError(varbind)}`);
         } else {
           const oid = varbind.oid;
           const bridgePort = varbind.value;
@@ -141,7 +141,7 @@ function walkMacAddressTable(session, oid, vlanId, macAddresses) {
               deviceType: getMacDeviceType(mac)
             });
             
-            logger.info(`[SNMP] Found MAC ${mac} on VLAN ${vlanId}`);
+            console.log(`[SNMP] Found MAC ${mac} on VLAN ${vlanId}`);
           }
         }
       }
