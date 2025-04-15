@@ -148,6 +148,8 @@ export async function discoverMacAddresses(
         macsByVlan.forEach((count, vlanId) => {
           console.log(`VLAN ${vlanId}: ${count} MAC addresses`);
         });
+      } else {
+        console.warn("No MAC addresses were discovered. This could indicate a problem with the SNMP configuration or permissions.");
       }
       
       // Ensure we return a properly formatted result even if backend returns unexpected data

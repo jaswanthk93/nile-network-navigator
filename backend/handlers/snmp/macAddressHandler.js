@@ -89,6 +89,7 @@ exports.discoverMacAddresses = async (req, res) => {
         });
         
         // Execute the specifically targeted walk for the MAC address table
+        // Pass the current VLAN ID to ensure it's correctly referenced in the callback
         await walkMacAddressTable(session, MAC_OIDS.bridgeMacToPort, vlan, macAddresses);
         
         // Close this VLAN-specific session
@@ -135,12 +136,16 @@ exports.discoverMacAddresses = async (req, res) => {
  */
 function walkMacAddressTable(session, oid, vlanId, macAddresses) {
   return new Promise((resolve, reject) => {
+    // Store vlanId in closure to ensure it's correctly used in callbacks
+    const currentVlanId = vlanId;
+    
     function doneCb(error) {
       if (error) {
-        logger.error(`[SNMP] Error in MAC address walk for VLAN ${vlanId}: ${error.message}`);
+        logger.error(`[SNMP] Error in MAC address walk for VLAN ${currentVlanId}: ${error.message}`);
         return reject(error);
       }
-      logger.info(`[SNMP] Successfully completed MAC address walk for VLAN ${vlanId}`);
+      // Ensure we're using the correct VLAN ID when logging completion
+      logger.info(`[SNMP] Successfully completed MAC address walk for VLAN ${currentVlanId}`);
       resolve();
     }
     
@@ -157,20 +162,20 @@ function walkMacAddressTable(session, oid, vlanId, macAddresses) {
           if (macParts.length === 6) {
             const mac = macParts.map(p => parseInt(p).toString(16).padStart(2, '0')).join(':').toUpperCase();
             
-            // Add to results - without port/interface information
+            // Add to results - use the currentVlanId from the closure
             macAddresses.push({
               macAddress: mac,
-              vlanId: vlanId,
+              vlanId: currentVlanId,
               deviceType: getMacDeviceType(mac)
             });
             
-            logger.info(`[SNMP] Found MAC ${mac} on VLAN ${vlanId}`);
+            logger.info(`[SNMP] Found MAC ${mac} on VLAN ${currentVlanId}`);
           }
         }
       }
     }
     
-    logger.info(`[SNMP] Starting MAC address walk for VLAN ${vlanId} with OID ${oid}`);
+    logger.info(`[SNMP] Starting MAC address walk for VLAN ${currentVlanId} with OID ${oid}`);
     session.walk(oid, feedCb, doneCb);
   });
 }
