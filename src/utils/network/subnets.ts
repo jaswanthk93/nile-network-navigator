@@ -36,7 +36,10 @@ export async function saveDiscoveredDevices(
       
       const { error: deviceError } = await supabase
         .from('devices')
-        .insert(deviceRecord);
+        .upsert(deviceRecord, {
+          onConflict: 'ip_address,subnet_id,site_id',
+          ignoreDuplicates: false
+        });
       
       if (deviceError) {
         console.error('Error inserting device:', deviceError);

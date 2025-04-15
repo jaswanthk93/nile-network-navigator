@@ -89,8 +89,11 @@ exports.discoverMacAddresses = async (req, res) => {
         });
         
         // Execute the specifically targeted walk for the MAC address table
-        // Pass the current VLAN ID to ensure it's correctly referenced in the callback
-        await walkMacAddressTable(session, MAC_OIDS.bridgeMacToPort, vlan, macAddresses);
+        // Instead of adding directly to the shared array, collect results per VLAN
+        const vlanMacs = await walkMacAddressTable(session, MAC_OIDS.bridgeMacToPort, vlan);
+        
+        // Add the collected MAC addresses from this VLAN to the overall results
+        macAddresses.push(...vlanMacs);
         
         // Close this VLAN-specific session
         try {
@@ -99,7 +102,7 @@ exports.discoverMacAddresses = async (req, res) => {
           logger.error(`[SNMP] Error closing session for VLAN ${vlan}: ${e.message}`);
         }
         
-        logger.info(`[SNMP] Completed MAC address discovery for VLAN ${vlan}, found ${macAddresses.length} MAC addresses so far`);
+        logger.info(`[SNMP] Completed MAC address discovery for VLAN ${vlan}, found ${vlanMacs.length} MAC addresses`);
       } catch (error) {
         logger.error(`[SNMP] Error querying MAC addresses for VLAN ${vlan}: ${error.message}`);
       }
@@ -133,20 +136,21 @@ exports.discoverMacAddresses = async (req, res) => {
 
 /**
  * Walk the MAC address table (dot1dTpFdbPort) for a specific VLAN
+ * Returns results specific to this VLAN walk instead of modifying a shared array
  */
-function walkMacAddressTable(session, oid, vlanId, macAddresses) {
+function walkMacAddressTable(session, oid, vlanId) {
   return new Promise((resolve, reject) => {
-    // Store vlanId in closure to ensure it's correctly used in callbacks
-    const currentVlanId = vlanId;
+    // Store isolated MAC addresses for this specific VLAN walk
+    const vlanMacs = [];
     
     function doneCb(error) {
       if (error) {
-        logger.error(`[SNMP] Error in MAC address walk for VLAN ${currentVlanId}: ${error.message}`);
+        logger.error(`[SNMP] Error in MAC address walk for VLAN ${vlanId}: ${error.message}`);
         return reject(error);
       }
       // Ensure we're using the correct VLAN ID when logging completion
-      logger.info(`[SNMP] Successfully completed MAC address walk for VLAN ${currentVlanId}`);
-      resolve();
+      logger.info(`[SNMP] Successfully completed MAC address walk for VLAN ${vlanId}`);
+      resolve(vlanMacs); // Return the collected MAC addresses for this VLAN
     }
     
     function feedCb(varbinds) {
@@ -162,20 +166,20 @@ function walkMacAddressTable(session, oid, vlanId, macAddresses) {
           if (macParts.length === 6) {
             const mac = macParts.map(p => parseInt(p).toString(16).padStart(2, '0')).join(':').toUpperCase();
             
-            // Add to results - use the currentVlanId from the closure
-            macAddresses.push({
+            // Add to VLAN-specific results
+            vlanMacs.push({
               macAddress: mac,
-              vlanId: currentVlanId,
+              vlanId: vlanId,
               deviceType: getMacDeviceType(mac)
             });
             
-            logger.info(`[SNMP] Found MAC ${mac} on VLAN ${currentVlanId}`);
+            logger.info(`[SNMP] Found MAC ${mac} on VLAN ${vlanId}`);
           }
         }
       }
     }
     
-    logger.info(`[SNMP] Starting MAC address walk for VLAN ${currentVlanId} with OID ${oid}`);
+    logger.info(`[SNMP] Starting MAC address walk for VLAN ${vlanId} with OID ${oid}`);
     session.walk(oid, feedCb, doneCb);
   });
 }
