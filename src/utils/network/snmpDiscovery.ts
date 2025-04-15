@@ -48,16 +48,21 @@ export async function getDeviceInfoViaSNMP(
         updateProgress(`Received SNMP information for ${ip}`, 10);
       }
 
-      // Make sure to return the data in a consistent format
+      // Ensure we prioritize the sysName as hostname from SNMP discovery
       const deviceInfo = {
-        hostname: data?.device?.sysName || null,
+        hostname: data?.device?.sysName || null, // Using sysName directly as the hostname
         make: data?.device?.manufacturer || null,
         model: data?.device?.model || null,
         category: data?.device?.type || 'Unknown',
         sysDescr: data?.device?.sysDescr || null
       };
       
-      console.log(`Device info discovered for ${ip}:`, deviceInfo);
+      if (deviceInfo.hostname) {
+        console.log(`SNMP discovered hostname for ${ip}: ${deviceInfo.hostname}`);
+      } else {
+        console.log(`No hostname discovered via SNMP for ${ip}`);
+      }
+      
       return deviceInfo;
     } else {
       // Simulated response for development without backend

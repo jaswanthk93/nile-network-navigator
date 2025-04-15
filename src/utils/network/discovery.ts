@@ -43,6 +43,7 @@ export async function discoverIP(
       const deviceInfo = await getDeviceInfoViaSNMP(ipAddress, updateProgress, backendConnected);
       
       if (deviceInfo && !deviceInfo.error) {
+        // The hostname from SNMP (sysName) is given highest preference
         discoveredDevice.hostname = deviceInfo.hostname || null;
         discoveredDevice.make = deviceInfo.make || null;
         discoveredDevice.model = deviceInfo.model || null;
