@@ -228,6 +228,7 @@ const MacAddressPage = () => {
         });
         
         try {
+          console.log(`Calling discoverMacAddresses with VLANs: ${vlanIds.join(', ')}`);
           const macAddressResults = await discoverMacAddresses(
             switchIp,
             community,

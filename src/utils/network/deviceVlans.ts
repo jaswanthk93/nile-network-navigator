@@ -1,85 +1,74 @@
 
 import { DiscoveredVlan } from "@/types/network";
+import { supabase } from "@/integrations/supabase/client";
 import { discoverVlans } from "./vlanDiscovery";
-import { callBackendApi } from "../apiClient";
 
+/**
+ * Get VLANs from a switch and save them to the database
+ */
 export async function getVlansFromSwitch(
   ip: string,
   community: string = "public",
   version: "1" | "2c" | "3" = "2c",
-  make: string = "Cisco"
+  siteId: string,
+  userId: string,
+  updateProgress?: (message: string, progress: number) => void
 ): Promise<DiscoveredVlan[]> {
   try {
-    console.log(`Getting VLANs from switch ${ip}...`);
+    console.log(`Getting VLANs from switch ${ip} for site ${siteId}...`);
     
-    // First, get the hostname of the device using SNMP sysName
-    let hostname = await getDeviceHostname(ip, community, version);
-    
-    // If hostname retrieval fails, use IP address as fallback
-    const deviceIdentifier = hostname || ip;
-    console.log(`Device identifier: ${deviceIdentifier} (${ip})`);
-    
-    const result = await discoverVlans(ip, community, version, make);
-    
-    if (result.vlans && result.vlans.length > 0) {
-      console.log(`Successfully retrieved ${result.vlans.length} VLANs from ${deviceIdentifier}`);
-      
-      // Log how many VLANs have subnet information
-      const vlansWithSubnets = result.vlans.filter(v => v.subnet).length;
-      if (vlansWithSubnets > 0) {
-        console.log(`${vlansWithSubnets} VLANs have subnet information`);
-      }
-      
-      // Update the usedBy array to use the hostname instead of IP
-      result.vlans = result.vlans.map(vlan => ({
-        ...vlan,
-        usedBy: hostname ? [hostname] : [ip]
-      }));
-      
-      return result.vlans;
-    } else {
-      console.warn(`No VLANs found on ${deviceIdentifier}`);
-      return [];
+    if (updateProgress) {
+      updateProgress("Discovering VLANs via SNMP...", 10);
     }
+    
+    // Discover VLANs from the switch
+    const { vlans, deviceHostname } = await discoverVlans(ip, community, version);
+    
+    if (updateProgress) {
+      updateProgress(`Discovered ${vlans.length} VLANs, saving to database...`, 50);
+    }
+    
+    console.log(`Discovered ${vlans.length} VLANs from ${ip}, device hostname: ${deviceHostname || 'unknown'}`);
+    
+    // First delete any existing VLANs for this site
+    const { error: deleteError } = await supabase
+      .from('vlans')
+      .delete()
+      .eq('site_id', siteId);
+      
+    if (deleteError) {
+      console.error("Error deleting existing VLANs:", deleteError);
+    }
+    
+    // Save the new VLANs to the database
+    const vlansToInsert = vlans.map(vlan => ({
+      site_id: siteId,
+      user_id: userId,
+      vlan_id: vlan.vlanId,
+      name: vlan.name || `VLAN ${vlan.vlanId}`,
+      description: vlan.deviceHostname || deviceHostname || undefined // Save device hostname in the description field
+    }));
+    
+    console.log(`Saving ${vlansToInsert.length} VLANs to database with site ID ${siteId}...`);
+    
+    const { error: insertError } = await supabase
+      .from('vlans')
+      .insert(vlansToInsert);
+      
+    if (insertError) {
+      console.error("Error inserting VLANs:", insertError);
+      throw new Error(`Failed to save VLANs to database: ${insertError.message}`);
+    }
+    
+    if (updateProgress) {
+      updateProgress(`Saved ${vlans.length} VLANs to database`, 100);
+    }
+    
+    console.log(`Successfully saved ${vlans.length} VLANs to database for site ${siteId}`);
+    
+    return vlans;
   } catch (error) {
-    console.error(`Error getting VLANs from ${ip}:`, error);
+    console.error("Error in getVlansFromSwitch:", error);
     throw error;
-  }
-}
-
-/**
- * Get the hostname of a device using SNMP sysName
- */
-async function getDeviceHostname(
-  ip: string, 
-  community: string = "public", 
-  version: "1" | "2c" | "3" = "2c"
-): Promise<string | null> {
-  try {
-    console.log(`Getting hostname for device ${ip} using SNMP sysName...`);
-    
-    // Call the backend API to execute the SNMP walk for sysName
-    const result = await callBackendApi("/snmp/get", {
-      ip,
-      community,
-      version,
-      oids: ["1.3.6.1.2.1.1.5.0"] // sysName OID
-    });
-    
-    if (result && result.results && result.results["1.3.6.1.2.1.1.5.0"]) {
-      const fullHostname = result.results["1.3.6.1.2.1.1.5.0"];
-      console.log(`Full hostname from SNMP: ${fullHostname}`);
-      
-      // Extract the hostname part before the domain
-      const hostname = fullHostname.split('.')[0];
-      console.log(`Using device hostname: ${hostname}`);
-      return hostname;
-    }
-    
-    console.warn(`No hostname found for ${ip}, using IP address instead`);
-    return null;
-  } catch (error) {
-    console.error(`Error getting hostname for ${ip}:`, error);
-    return null;
   }
 }

@@ -1,4 +1,3 @@
-
 /**
  * Interface for discovered VLAN
  */
@@ -7,6 +6,7 @@ export interface DiscoveredVlan {
   name: string;
   subnet?: string;
   usedBy: string[];
+  deviceHostname?: string; // Add this field to store the actual device hostname
 }
 
 /**

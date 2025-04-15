@@ -23,8 +23,16 @@ exports.discoverMacAddresses = async (req, res) => {
       return res.status(400).json({ error: 'Either IP address or session ID is required' });
     }
     
-    // Log the operation
+    // Log the operation with more details
     console.log(`[SNMP] Starting MAC address discovery for ${ip || 'session ' + sessionId}${vlanId ? ` on VLAN ${vlanId}` : ''}`);
+    console.log(`[SNMP] Request details:`, JSON.stringify({
+      ip, 
+      sessionId,
+      community: community ? `${community.slice(0,2)}***` : null, // Mask the community string
+      version,
+      vlanId,
+      vlanIds: vlanIds ? `Array with ${vlanIds.length} VLANs` : null
+    }, null, 2));
     
     // Determine which VLANs to query
     let vlans = [];

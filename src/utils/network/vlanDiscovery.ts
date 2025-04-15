@@ -93,7 +93,8 @@ export async function discoverVlans(
         name: vlan.name,
         subnet: vlan.subnet,
         // Use hostname instead of IP address if available
-        usedBy: Array.isArray(vlan.usedBy) && vlan.usedBy.length > 0 ? vlan.usedBy : [deviceIdentifier]
+        usedBy: Array.isArray(vlan.usedBy) && vlan.usedBy.length > 0 ? vlan.usedBy : [deviceIdentifier],
+        deviceHostname: deviceIdentifier !== ip ? deviceIdentifier : undefined // Save device hostname explicitly
       });
     }
     
