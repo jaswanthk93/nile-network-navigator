@@ -15,9 +15,7 @@ export interface DiscoveredVlan {
 export interface DiscoveredMacAddress {
   macAddress: string;
   vlanId: number;
-  deviceType: string;
-  port?: string;
-  selected?: boolean;
+  deviceType?: string;
 }
 
 /**
@@ -100,4 +98,14 @@ export interface DeviceData {
   needs_verification: boolean | null;
   confirmed: boolean | null;
   sysdescr: string | null;  // Only use lowercase version to match database
+}
+
+/**
+ * Interface for device discovery result
+ */
+export interface DeviceDiscoveryResult {
+  ip_address: string;
+  hostname?: string;
+  mac_address?: string;
+  macAddresses?: DiscoveredMacAddress[];
 }
