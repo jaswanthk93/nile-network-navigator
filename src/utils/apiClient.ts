@@ -21,6 +21,7 @@ export async function callBackendApi<T = any>(endpoint: string, data: any): Prom
     
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`API error (${response.status}) for ${endpoint}: ${errorText}`);
       throw new Error(`API error (${response.status}): ${errorText}`);
     }
     
@@ -36,7 +37,7 @@ export async function callBackendApi<T = any>(endpoint: string, data: any): Prom
       
       // Check if it's HTML (which would cause the JSON parse error)
       if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html")) {
-        console.error(`Received HTML instead of JSON from ${endpoint}`);
+        console.error(`Received HTML instead of JSON from ${endpoint}. Response:`, text.substring(0, 200));
         throw new Error(`Received HTML response instead of JSON from ${endpoint}. This likely indicates a server routing issue or redirection.`);
       }
       

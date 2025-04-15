@@ -28,7 +28,7 @@ exports.discoverDeviceInfo = async (ip, community = 'public', version = '2c') =>
   try {
     // Get system information with a targeted, focused query
     const deviceInfo = {};
-    logger.info(`[SNMP] STRICT GET: Executing device info query with ONLY the following specific OIDs:`);
+    logger.info(`[SNMP] STRICT GET: Executing device info query for IP ${ip} with ONLY the following specific OIDs:`);
     logger.info(`[SNMP] STRICT GET: 1. sysDescr: 1.3.6.1.2.1.1.1.0`);
     logger.info(`[SNMP] STRICT GET: 2. sysObjectID: 1.3.6.1.2.1.1.2.0`);
     logger.info(`[SNMP] STRICT GET: 3. sysName: 1.3.6.1.2.1.1.5.0`);
@@ -38,12 +38,13 @@ exports.discoverDeviceInfo = async (ip, community = 'public', version = '2c') =>
     await new Promise((resolve, reject) => {
       session.get(oids, (error, varbinds) => {
         if (error) {
+          logger.error(`[SNMP] Error getting device info for ${ip}: ${error.message}`);
           return reject(error);
         }
         
         for (let i = 0; i < varbinds.length; i++) {
           if (snmp.isVarbindError(varbinds[i])) {
-            console.warn(`Error for OID ${oids[i]}: ${snmp.varbindError(varbinds[i])}`);
+            logger.warn(`[SNMP] Error for OID ${oids[i]}: ${snmp.varbindError(varbinds[i])}`);
             continue;
           }
           
@@ -86,6 +87,15 @@ exports.discoverDeviceInfo = async (ip, community = 'public', version = '2c') =>
     deviceInfo.manufacturer = getManufacturerFromOID(deviceInfo.sysObjectID);
     deviceInfo.model = parseModelFromSNMP(deviceInfo.sysDescr, deviceInfo.manufacturer);
     deviceInfo.type = determineDeviceTypeFromSNMP(deviceInfo.sysDescr, deviceInfo.sysObjectID);
+    
+    logger.info(`[SNMP] Device info discovery complete for ${ip}:`, 
+      JSON.stringify({ 
+        hostname: deviceInfo.sysName,
+        manufacturer: deviceInfo.manufacturer,
+        model: deviceInfo.model,
+        type: deviceInfo.type 
+      }, null, 2)
+    );
     
     return deviceInfo;
   } finally {

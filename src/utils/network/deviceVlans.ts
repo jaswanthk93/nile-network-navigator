@@ -40,13 +40,13 @@ export async function getVlansFromSwitch(
       console.error("Error deleting existing VLANs:", deleteError);
     }
     
-    // Save the new VLANs to the database
+    // Save the new VLANs to the database with device hostname in the description field
     const vlansToInsert = vlans.map(vlan => ({
       site_id: siteId,
       user_id: userId,
       vlan_id: vlan.vlanId,
       name: vlan.name || `VLAN ${vlan.vlanId}`,
-      description: vlan.deviceHostname || deviceHostname || undefined // Save device hostname in the description field
+      description: vlan.deviceHostname || deviceHostname || undefined
     }));
     
     console.log(`Saving ${vlansToInsert.length} VLANs to database with site ID ${siteId}...`);
@@ -58,6 +58,24 @@ export async function getVlansFromSwitch(
     if (insertError) {
       console.error("Error inserting VLANs:", insertError);
       throw new Error(`Failed to save VLANs to database: ${insertError.message}`);
+    }
+    
+    // Also update any existing devices with the discovered hostname if it's a switch
+    if (deviceHostname) {
+      console.log(`Updating any existing Switch devices with hostname ${deviceHostname} for IP ${ip}`);
+      
+      const { error: updateDeviceError } = await supabase
+        .from('devices')
+        .update({ hostname: deviceHostname, needs_verification: false, confirmed: true })
+        .eq('ip_address', ip)
+        .eq('site_id', siteId)
+        .eq('category', 'Switch');
+      
+      if (updateDeviceError) {
+        console.error("Error updating device hostname:", updateDeviceError);
+      } else {
+        console.log(`Successfully updated hostname for switch at ${ip} to ${deviceHostname}`);
+      }
     }
     
     if (updateProgress) {

@@ -23,6 +23,7 @@ export async function getDeviceInfoViaSNMP(
 
     // When backend is connected, use real SNMP discovery
     if (backendConnected) {
+      console.log(`Discovering device info for ${ip} using backend API`);
       const { data, error } = await fetch('/api/devices/discover', {
         method: 'POST',
         headers: {
@@ -44,13 +45,17 @@ export async function getDeviceInfoViaSNMP(
         updateProgress(`Received SNMP information for ${ip}`, 10);
       }
 
-      return {
+      // Make sure to return the data in a consistent format
+      const deviceInfo = {
         hostname: data?.device?.sysName || null,
         make: data?.device?.manufacturer || null,
         model: data?.device?.model || null,
         category: data?.device?.type || 'Unknown',
         sysDescr: data?.device?.sysDescr || null
       };
+      
+      console.log(`Device info discovered for ${ip}:`, deviceInfo);
+      return deviceInfo;
     } else {
       // Simulated response for development without backend
       console.log(`[Simulated] Getting SNMP information for ${ip}`);
@@ -70,7 +75,6 @@ export async function getDeviceInfoViaSNMP(
 
 /**
  * Discover MAC addresses on a switch using SNMP
- * This function uses VLANs retrieved from the database to perform targeted SNMP walks
  */
 export async function discoverMacAddresses(
   ip: string,
@@ -97,25 +101,44 @@ export async function discoverMacAddresses(
     }
 
     try {
-      // Use callBackendApi to directly call the backend for MAC address discovery
+      // Call backend API directly with detailed logging
       console.log(`Calling backend API for MAC address discovery with VLANs: ${vlanIds.join(', ')}`);
       
-      const result = await callBackendApi<MacAddressDiscoveryResult>("/snmp/discover-mac-addresses", {
+      // Double check the endpoint is correct and add more detailed logging
+      const endpoint = "/snmp/discover-mac-addresses";
+      console.log(`Full endpoint URL: ${import.meta.env.VITE_BACKEND_URL || "http://localhost:3001/api"}${endpoint}`);
+      
+      const requestData = {
         ip,
         community,
         version,
         vlanIds
-      });
+      };
       
-      console.log(`MAC address discovery complete. Found ${result.macAddresses.length} MAC addresses.`);
+      console.log(`Request data for MAC discovery:`, JSON.stringify(requestData, null, 2));
       
       if (progressCallback) {
-        progressCallback(`MAC address discovery complete. Found ${result.macAddresses.length} MAC addresses.`, 100);
+        progressCallback(`Sending request to backend for MAC address discovery...`, 30);
       }
       
-      return result;
+      const result = await callBackendApi<MacAddressDiscoveryResult>(endpoint, requestData);
+      
+      if (progressCallback) {
+        progressCallback(`MAC address discovery complete. Found ${result.macAddresses?.length || 0} MAC addresses.`, 100);
+      }
+      
+      console.log(`MAC address discovery complete. Found ${result.macAddresses?.length || 0} MAC addresses.`);
+      
+      // Ensure we return a properly formatted result even if backend returns unexpected data
+      return {
+        macAddresses: result.macAddresses || [],
+        vlanIds: result.vlanIds || vlanIds
+      };
     } catch (error) {
       console.error("Error in MAC address discovery:", error);
+      if (progressCallback) {
+        progressCallback(`Error during MAC address discovery: ${error instanceof Error ? error.message : String(error)}`, 100);
+      }
       throw error;
     }
   } catch (error) {
