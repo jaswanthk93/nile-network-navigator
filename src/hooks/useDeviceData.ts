@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -81,36 +80,19 @@ export const useDeviceData = (userId: string | undefined) => {
         'category': 'category'
       };
       
-      // Then update the database
+      // Then update the database but don't change verification status
+      // This allows editing multiple fields before final confirmation
       const { error } = await supabase
         .from('devices')
-        .update({ 
-          [fieldMapping[field]]: value,
-          // Only mark this device as confirmed if it wasn't already
-          ...(devices.find(d => d.id === id)?.needsVerification 
-            ? { confirmed: true, needs_verification: false } 
-            : {})
-        })
+        .update({ [fieldMapping[field]]: value })
         .eq('id', id);
       
       if (error) {
         throw error;
       }
       
-      // Update the local state again with confirmation status
-      setDevices(devices.map(device => 
-        device.id === id ? { 
-          ...device, 
-          [field]: value,
-          ...(device.needsVerification ? {
-            confirmed: true,
-            needsVerification: false
-          } : {})
-        } : device
-      ));
-      
       toast({
-        title: "Device updated",
+        title: "Field updated",
         description: `Successfully updated device ${field}.`,
       });
     } catch (error) {

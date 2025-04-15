@@ -44,26 +44,35 @@ export function DeviceTableRow({
   onSaveEdit,
   onDeleteDevice,
 }: DeviceTableRowProps) {
-  const [editField, setEditField] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
+  // Track which fields are being edited
+  const [editingFields, setEditingFields] = useState<Record<string, string>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const handleEdit = (field: string, value: string) => {
-    setEditField(field);
-    setEditValue(value);
+    setEditingFields({
+      ...editingFields,
+      [field]: value
+    });
   };
 
-  const handleSave = () => {
-    if (editField) {
-      onSaveEdit(device.id, editField, editValue);
-      setEditField(null);
+  const handleSave = (field: string) => {
+    if (editingFields[field] !== undefined) {
+      onSaveEdit(device.id, field, editingFields[field]);
+      // Remove this field from editing state
+      const newEditingFields = { ...editingFields };
+      delete newEditingFields[field];
+      setEditingFields(newEditingFields);
     }
   };
 
-  const handleCancel = () => {
-    setEditField(null);
+  const handleCancel = (field: string) => {
+    // Remove this field from editing state
+    const newEditingFields = { ...editingFields };
+    delete newEditingFields[field];
+    setEditingFields(newEditingFields);
   };
 
+  const isEditing = (field: string) => field in editingFields;
   const isSwitch = device.category === "Switch";
 
   // Predefined lists for dropdowns
@@ -86,18 +95,18 @@ export function DeviceTableRow({
       <TableCell className="font-mono">{device.ipAddress}</TableCell>
       
       <TableCell>
-        {editField === "hostname" ? (
+        {isEditing("hostname") ? (
           <div className="flex space-x-2">
             <Input
               className="h-8 w-full"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
+              value={editingFields.hostname}
+              onChange={(e) => setEditingFields({...editingFields, hostname: e.target.value})}
             />
             <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-green-600"
-              onClick={handleSave}
+              onClick={() => handleSave("hostname")}
             >
               <Check className="h-4 w-4" />
             </Button>
@@ -105,7 +114,7 @@ export function DeviceTableRow({
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-red-600"
-              onClick={handleCancel}
+              onClick={() => handleCancel("hostname")}
             >
               <X className="h-4 w-4" />
             </Button>
@@ -113,26 +122,24 @@ export function DeviceTableRow({
         ) : (
           <div className="flex items-center space-x-2">
             <span>{device.hostname || "—"}</span>
-            {device.needsVerification && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground"
-                onClick={() => handleEdit("hostname", device.hostname)}
-              >
-                <Edit2 className="h-3 w-3" />
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground"
+              onClick={() => handleEdit("hostname", device.hostname)}
+            >
+              <Edit2 className="h-3 w-3" />
+            </Button>
           </div>
         )}
       </TableCell>
       
       <TableCell>
-        {editField === "make" ? (
+        {isEditing("make") ? (
           <div className="flex space-x-2">
             <Select
-              value={editValue}
-              onValueChange={setEditValue}
+              value={editingFields.make}
+              onValueChange={(value) => setEditingFields({...editingFields, make: value})}
             >
               <SelectTrigger className="h-8 w-full">
                 <SelectValue placeholder="Select make..." />
@@ -149,7 +156,7 @@ export function DeviceTableRow({
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-green-600"
-              onClick={handleSave}
+              onClick={() => handleSave("make")}
             >
               <Check className="h-4 w-4" />
             </Button>
@@ -157,7 +164,7 @@ export function DeviceTableRow({
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-red-600"
-              onClick={handleCancel}
+              onClick={() => handleCancel("make")}
             >
               <X className="h-4 w-4" />
             </Button>
@@ -165,33 +172,31 @@ export function DeviceTableRow({
         ) : (
           <div className="flex items-center space-x-2">
             <span>{device.make || "—"}</span>
-            {device.needsVerification && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground"
-                onClick={() => handleEdit("make", device.make)}
-              >
-                <Edit2 className="h-3 w-3" />
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground"
+              onClick={() => handleEdit("make", device.make)}
+            >
+              <Edit2 className="h-3 w-3" />
+            </Button>
           </div>
         )}
       </TableCell>
       
       <TableCell>
-        {editField === "model" ? (
+        {isEditing("model") ? (
           <div className="flex space-x-2">
             <Input
               className="h-8 w-full"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
+              value={editingFields.model}
+              onChange={(e) => setEditingFields({...editingFields, model: e.target.value})}
             />
             <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-green-600"
-              onClick={handleSave}
+              onClick={() => handleSave("model")}
             >
               <Check className="h-4 w-4" />
             </Button>
@@ -199,7 +204,7 @@ export function DeviceTableRow({
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-red-600"
-              onClick={handleCancel}
+              onClick={() => handleCancel("model")}
             >
               <X className="h-4 w-4" />
             </Button>
@@ -207,26 +212,24 @@ export function DeviceTableRow({
         ) : (
           <div className="flex items-center space-x-2">
             <span>{device.model || "—"}</span>
-            {device.needsVerification && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground"
-                onClick={() => handleEdit("model", device.model)}
-              >
-                <Edit2 className="h-3 w-3" />
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground"
+              onClick={() => handleEdit("model", device.model)}
+            >
+              <Edit2 className="h-3 w-3" />
+            </Button>
           </div>
         )}
       </TableCell>
       
       <TableCell>
-        {editField === "category" ? (
+        {isEditing("category") ? (
           <div className="flex space-x-2">
             <Select
-              value={editValue}
-              onValueChange={setEditValue}
+              value={editingFields.category}
+              onValueChange={(value) => setEditingFields({...editingFields, category: value})}
             >
               <SelectTrigger className="h-8 w-full">
                 <SelectValue placeholder="Select..." />
@@ -243,7 +246,7 @@ export function DeviceTableRow({
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-green-600"
-              onClick={handleSave}
+              onClick={() => handleSave("category")}
             >
               <Check className="h-4 w-4" />
             </Button>
@@ -251,7 +254,7 @@ export function DeviceTableRow({
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-red-600"
-              onClick={handleCancel}
+              onClick={() => handleCancel("category")}
             >
               <X className="h-4 w-4" />
             </Button>
@@ -271,16 +274,14 @@ export function DeviceTableRow({
             >
               {device.category}
             </Badge>
-            {device.needsVerification && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground"
-                onClick={() => handleEdit("category", device.category)}
-              >
-                <Edit2 className="h-3 w-3" />
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground"
+              onClick={() => handleEdit("category", device.category)}
+            >
+              <Edit2 className="h-3 w-3" />
+            </Button>
           </div>
         )}
       </TableCell>
