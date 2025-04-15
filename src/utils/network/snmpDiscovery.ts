@@ -1,4 +1,3 @@
-
 import { DiscoveredMacAddress } from "@/types/network";
 import { executeSnmpWalk } from "@/utils/apiClient";
 
@@ -70,12 +69,13 @@ export async function getDeviceInfoViaSNMP(
 
 /**
  * Discover MAC addresses on a switch using SNMP
- * This function performs targeted SNMP walks for each VLAN to discover MAC addresses
+ * This function uses VLANs retrieved from the database to perform targeted SNMP walks
  */
 export async function discoverMacAddresses(
   ip: string,
   community: string = 'public',
   version: string = '2c',
+  vlanIds: number[] = [],
   progressCallback?: (message: string, progress: number) => void
 ): Promise<MacAddressDiscoveryResult> {
   try {
@@ -83,37 +83,17 @@ export async function discoverMacAddresses(
       progressCallback("Starting MAC address discovery...", 0);
     }
 
-    // Get VLANs first using the VLAN discovery function
-    console.log(`Attempting to fetch VLANs from ${ip} with community ${community}`);
-    const { data: vlanData, error: vlanError } = await fetch('/api/vlans/discover', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        ip,
-        community,
-        version
-      }),
-    }).then(res => res.json());
-
-    if (vlanError) {
-      console.error("Error discovering VLANs:", vlanError);
-      throw new Error(`Failed to discover VLANs: ${vlanError}`);
+    // If no VLANs are provided, log a warning but try to continue with default VLAN 1
+    if (!vlanIds || vlanIds.length === 0) {
+      console.warn("No VLANs provided for MAC address discovery. Will use default VLAN 1.");
+      vlanIds = [1];
     }
 
-    const vlans = vlanData?.vlans || [];
-    const vlanIds = vlans.map((vlan: any) => vlan.vlanId);
-
+    console.log(`Starting MAC address discovery with ${vlanIds.length} VLANs: ${vlanIds.join(', ')}`);
+    
     if (progressCallback) {
-      progressCallback(`Discovered ${vlanIds.length} VLANs. Starting MAC address collection...`, 10);
+      progressCallback(`Using ${vlanIds.length} VLANs for MAC address discovery...`, 10);
     }
-
-    if (vlanIds.length === 0) {
-      throw new Error("No VLANs discovered. Cannot proceed with MAC address discovery.");
-    }
-
-    console.log(`Found ${vlanIds.length} VLANs. Starting MAC collection...`);
 
     // MAC address collection - do a targeted SNMP walk for each VLAN
     const macAddresses: DiscoveredMacAddress[] = [];
@@ -131,10 +111,9 @@ export async function discoverMacAddresses(
       const vlanCommunity = vlanId === 1 ? community : `${community}@${vlanId}`;
 
       try {
-        console.log(`Executing SNMP walk for VLAN ${vlanId} with OID ${macOid}`);
+        console.log(`Executing SNMP walk for VLAN ${vlanId} with OID ${macOid} and community string ${vlanCommunity}`);
         
-        // Instead of directly calling executeSnmpWalk, we'll make a direct call to the backend API
-        // to see if that resolves our issue
+        // Call our backend API directly to avoid potential redirection issues
         const response = await fetch('/api/snmp/walk', {
           method: 'POST',
           headers: {
@@ -148,21 +127,28 @@ export async function discoverMacAddresses(
           }),
         });
         
-        // Check if the response is JSON
-        const contentType = response.headers.get("content-type");
-        let macData;
-        
+        // Check if the response is successful
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`SNMP walk failed for VLAN ${vlanId}: ${errorText}`);
           continue; // Skip this VLAN but try the others
         }
         
+        // Check if the response is JSON
+        const contentType = response.headers.get("content-type");
+        let macData;
+        
         if (contentType && contentType.includes("application/json")) {
           macData = await response.json();
         } else {
           const textResponse = await response.text();
           console.error(`Received non-JSON response for VLAN ${vlanId}:`, textResponse);
+          
+          // Check if it's HTML and log a more specific error
+          if (textResponse.trim().startsWith("<!DOCTYPE") || textResponse.trim().startsWith("<html")) {
+            console.error(`Received HTML instead of JSON. This likely indicates a server issue or redirection.`);
+          }
+          
           continue; // Skip this VLAN but try the others
         }
 
@@ -189,7 +175,6 @@ export async function discoverMacAddresses(
                 macAddress: mac,
                 vlanId: vlanId,
                 deviceType: getMacDeviceType(mac),
-                // Include port as undefined to match the expected interface
                 port: undefined 
               });
             }

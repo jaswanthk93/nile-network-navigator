@@ -17,7 +17,7 @@ const MAC_OIDS = {
 exports.discoverMacAddresses = async (req, res) => {
   try {
     // Extract session ID and VLAN ID from request
-    const { sessionId, ip, community = 'public', version = '2c', vlanId } = req.body;
+    const { sessionId, ip, community = 'public', version = '2c', vlanId, vlanIds } = req.body;
     
     if (!ip && !sessionId) {
       return res.status(400).json({ error: 'Either IP address or session ID is required' });
@@ -25,21 +25,25 @@ exports.discoverMacAddresses = async (req, res) => {
     
     // Log the operation
     logger.info(`[SNMP] Starting MAC address discovery for ${ip || 'session ' + sessionId}${vlanId ? ` on VLAN ${vlanId}` : ''}`);
-    logger.info(`[SNMP] Will execute targeted SNMP walks to discover MAC address table entries`);
     
     // Determine which VLANs to query
     let vlans = [];
     
-    if (vlanId) {
+    if (vlanIds && Array.isArray(vlanIds) && vlanIds.length > 0) {
+      // Use the provided list of VLAN IDs
+      vlans = vlanIds;
+      logger.info(`[SNMP] Using provided list of ${vlans.length} VLANs: ${vlans.join(', ')}`);
+    } else if (vlanId) {
       // Query specific VLAN
       vlans = [vlanId];
+      logger.info(`[SNMP] Using single VLAN: ${vlanId}`);
     } else {
       // First discover VLANs, then query each one
       try {
-        logger.info(`[SNMP] No VLAN specified, discovering VLANs first`);
+        logger.info(`[SNMP] No VLANs specified, discovering VLANs first`);
         const vlanResult = await vlanHandler.discoverVlans(ip, community, version);
         vlans = vlanResult.vlans.map(vlan => vlan.vlanId);
-        logger.info(`[SNMP] Discovered ${vlans.length} VLANs for MAC address lookup`);
+        logger.info(`[SNMP] Discovered ${vlans.length} VLANs for MAC address lookup: ${vlans.join(', ')}`);
       } catch (error) {
         logger.warn(`[SNMP] Failed to discover VLANs: ${error.message}. Will use default VLAN 1`);
         vlans = [1]; // Default to VLAN 1 if VLAN discovery fails

@@ -30,6 +30,7 @@ const MacAddressPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+  const [dbVlans, setDbVlans] = useState<any[]>([]);
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -63,6 +64,33 @@ const MacAddressPage = () => {
       });
     }
   }, [location.search, toast, user]);
+
+  const fetchVlansFromDatabase = async (siteId: string) => {
+    try {
+      console.log(`Fetching VLANs from database for site ${siteId}`);
+      
+      const { data: vlans, error: vlansError } = await supabase
+        .from('vlans')
+        .select('*')
+        .eq('site_id', siteId);
+        
+      if (vlansError) {
+        console.error("Error fetching VLANs from database:", vlansError);
+        throw new Error(`Error fetching VLANs: ${vlansError.message}`);
+      }
+      
+      if (!vlans || vlans.length === 0) {
+        console.warn(`No VLANs found in database for site ${siteId}`);
+        return [];
+      }
+      
+      console.log(`Found ${vlans.length} VLANs in database:`, vlans.map(v => v.vlan_id));
+      return vlans;
+    } catch (error) {
+      console.error("Error in fetchVlansFromDatabase:", error);
+      throw error;
+    }
+  };
 
   const fetchMacAddresses = async () => {
     if (!user) {
@@ -104,162 +132,160 @@ const MacAddressPage = () => {
       
       console.log(`MacAddressPage: Verified site exists: ${siteData.name} (${siteData.id})`);
       
-      const { data: vlans, error: vlansError } = await supabase
-        .from('vlans')
-        .select('*')
-        .eq('site_id', selectedSiteId);
-        
-      if (vlansError) {
-        console.error("Error fetching VLANs:", vlansError);
-        setError("Error fetching VLAN information. Please try again.");
-        setLoading(false);
-        toast({
-          title: "Error",
-          description: "Failed to load VLAN information.",
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      console.log(`MacAddressPage: Found ${vlans?.length || 0} VLANs for site ${selectedSiteId}`);
-      
-      if (!vlans || vlans.length === 0) {
-        console.error("No VLANs found for site:", selectedSiteId);
-        setError("No VLANs found. Please discover VLANs first.");
-        setLoading(false);
-        toast({
-          title: "No VLANs Found",
-          description: "You need to discover VLANs first before discovering MAC addresses.",
-          variant: "destructive",
-        });
-        navigate(`/vlans?site=${selectedSiteId}`);
-        return;
-      }
-      
-      const { data: subnets, error: subnetsError } = await supabase
-        .from('subnets')
-        .select('*')
-        .eq('site_id', selectedSiteId)
-        .order('created_at', { ascending: false });
-        
-      if (subnetsError) {
-        console.error("Error fetching subnets:", subnetsError);
-        setError("Error fetching subnet information. Please try again.");
-        setLoading(false);
-        toast({
-          title: "Error",
-          description: "Failed to load subnet information.",
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      if (!subnets || subnets.length === 0) {
-        console.error("No subnets found for site:", selectedSiteId);
-        setError("No subnet information found. Please complete network discovery first.");
-        setLoading(false);
-        toast({
-          title: "No Subnet Information",
-          description: "Network information is missing. Please complete network discovery first.",
-          variant: "destructive",
-        });
-        navigate(`/site-subnet?site=${selectedSiteId}`);
-        return;
-      }
-      
-      const { data: devices, error: devicesError } = await supabase
-        .from('devices')
-        .select('*')
-        .eq('site_id', selectedSiteId)
-        .eq('category', 'Switch')
-        .limit(1);
-        
-      if (devicesError) {
-        console.error("Error fetching switch devices:", devicesError);
-        setError("Error fetching switch devices. Please try again.");
-        setLoading(false);
-        toast({
-          title: "Error",
-          description: "Failed to find network switches.",
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      if (!devices || devices.length === 0) {
-        console.error("No switch devices found for site:", selectedSiteId);
-        setError("No switch devices found. Please complete device discovery first.");
-        setLoading(false);
-        toast({
-          title: "No Switch Found",
-          description: "No switch device found in the network. Please complete device discovery first.",
-          variant: "destructive",
-        });
-        navigate(`/devices?site=${selectedSiteId}`);
-        return;
-      }
-      
-      const switchIp = devices[0].ip_address;
-      const subnet = subnets[0];
-      const community = subnet.snmp_community || 'public';
-      const version = subnet.snmp_version || '2c';
-      
-      console.log(`Using switch ${switchIp} with community ${community} and version ${version} for site ${selectedSiteId}`);
-      
-      toast({
-        title: "Discovering MAC Addresses",
-        description: `Using SNMP to discover MAC addresses on ${switchIp}...`,
-      });
-      
       try {
-        const macAddressResults = await discoverMacAddresses(
-          switchIp,
-          community,
-          version,
-          (message: string, progress: number) => {
-            console.log(`MAC discovery progress: ${message} (${progress}%)`);
-          }
-        );
+        const vlans = await fetchVlansFromDatabase(selectedSiteId);
+        setDbVlans(vlans);
         
-        console.log(`Discovered ${macAddressResults.macAddresses.length} MAC addresses across ${macAddressResults.vlanIds.length} VLANs for site ${selectedSiteId}`);
-        
-        const vlanMap = new Map();
-        vlans.forEach(vlan => {
-          vlanMap.set(vlan.vlan_id, vlan.name || `VLAN ${vlan.vlan_id}`);
-        });
-        
-        const transformedMacs = macAddressResults.macAddresses.map((mac, index) => ({
-          id: `mac-${index}`,
-          macAddress: mac.macAddress,
-          vlanId: mac.vlanId,
-          segmentName: vlanMap.get(mac.vlanId) || `VLAN ${mac.vlanId}`,
-          deviceType: mac.deviceType || 'Unknown',
-          port: mac.port || undefined,
-          selected: true
-        }));
-        
-        setMacAddresses(transformedMacs);
-        
-        if (transformedMacs.length === 0) {
-          setError("No MAC addresses found. The switch did not return any MAC address information.");
+        if (vlans.length === 0) {
+          console.error("No VLANs found in database for site:", selectedSiteId);
+          setError("No VLANs found. Please discover VLANs first.");
+          setLoading(false);
           toast({
-            title: "No MAC Addresses Found",
-            description: "No MAC addresses were discovered on the network.",
+            title: "No VLANs Found",
+            description: "You need to discover VLANs first before discovering MAC addresses.",
             variant: "destructive",
           });
-        } else {
-          setError(null);
+          navigate(`/vlans?site=${selectedSiteId}`);
+          return;
+        }
+        
+        const vlanIds = vlans.map(vlan => vlan.vlan_id);
+        console.log(`Using VLANs from database: ${vlanIds.join(', ')}`);
+        
+        const { data: subnets, error: subnetsError } = await supabase
+          .from('subnets')
+          .select('*')
+          .eq('site_id', selectedSiteId)
+          .order('created_at', { ascending: false });
+          
+        if (subnetsError) {
+          console.error("Error fetching subnets:", subnetsError);
+          setError("Error fetching subnet information. Please try again.");
+          setLoading(false);
           toast({
-            title: "MAC Addresses Discovered",
-            description: `Successfully discovered ${transformedMacs.length} MAC addresses.`,
+            title: "Error",
+            description: "Failed to load subnet information.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        if (!subnets || subnets.length === 0) {
+          console.error("No subnets found for site:", selectedSiteId);
+          setError("No subnet information found. Please complete network discovery first.");
+          setLoading(false);
+          toast({
+            title: "No Subnet Information",
+            description: "Network information is missing. Please complete network discovery first.",
+            variant: "destructive",
+          });
+          navigate(`/site-subnet?site=${selectedSiteId}`);
+          return;
+        }
+        
+        const { data: devices, error: devicesError } = await supabase
+          .from('devices')
+          .select('*')
+          .eq('site_id', selectedSiteId)
+          .eq('category', 'Switch')
+          .limit(1);
+          
+        if (devicesError) {
+          console.error("Error fetching switch devices:", devicesError);
+          setError("Error fetching switch devices. Please try again.");
+          setLoading(false);
+          toast({
+            title: "Error",
+            description: "Failed to find network switches.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        if (!devices || devices.length === 0) {
+          console.error("No switch devices found for site:", selectedSiteId);
+          setError("No switch devices found. Please complete device discovery first.");
+          setLoading(false);
+          toast({
+            title: "No Switch Found",
+            description: "No switch device found in the network. Please complete device discovery first.",
+            variant: "destructive",
+          });
+          navigate(`/devices?site=${selectedSiteId}`);
+          return;
+        }
+        
+        const switchIp = devices[0].ip_address;
+        const subnet = subnets[0];
+        const community = subnet.snmp_community || 'public';
+        const version = subnet.snmp_version || '2c';
+        
+        console.log(`Using switch ${switchIp} with community ${community} and version ${version} for site ${selectedSiteId}`);
+        
+        toast({
+          title: "Discovering MAC Addresses",
+          description: `Using SNMP to discover MAC addresses on ${switchIp} for ${vlanIds.length} VLANs...`,
+        });
+        
+        try {
+          const macAddressResults = await discoverMacAddresses(
+            switchIp,
+            community,
+            version,
+            vlanIds,
+            (message: string, progress: number) => {
+              console.log(`MAC discovery progress: ${message} (${progress}%)`);
+            }
+          );
+          
+          console.log(`Discovered ${macAddressResults.macAddresses.length} MAC addresses across ${macAddressResults.vlanIds.length} VLANs for site ${selectedSiteId}`);
+          
+          const vlanMap = new Map();
+          vlans.forEach(vlan => {
+            vlanMap.set(vlan.vlan_id, vlan.name || `VLAN ${vlan.vlan_id}`);
+          });
+          
+          const transformedMacs = macAddressResults.macAddresses.map((mac, index) => ({
+            id: `mac-${index}`,
+            macAddress: mac.macAddress,
+            vlanId: mac.vlanId,
+            segmentName: vlanMap.get(mac.vlanId) || `VLAN ${mac.vlanId}`,
+            deviceType: mac.deviceType || 'Unknown',
+            port: mac.port || undefined,
+            selected: true
+          }));
+          
+          setMacAddresses(transformedMacs);
+          
+          if (transformedMacs.length === 0) {
+            setError("No MAC addresses found. The switch did not return any MAC address information.");
+            toast({
+              title: "No MAC Addresses Found",
+              description: "No MAC addresses were discovered on the network.",
+              variant: "destructive",
+            });
+          } else {
+            setError(null);
+            toast({
+              title: "MAC Addresses Discovered",
+              description: `Successfully discovered ${transformedMacs.length} MAC addresses.`,
+            });
+          }
+        } catch (macDiscoveryError) {
+          console.error("Error discovering MAC addresses:", macDiscoveryError);
+          setError(macDiscoveryError instanceof Error ? macDiscoveryError.message : "Failed to discover MAC addresses");
+          toast({
+            title: "MAC Discovery Error",
+            description: macDiscoveryError instanceof Error ? macDiscoveryError.message : "An error occurred during MAC address discovery",
+            variant: "destructive",
           });
         }
-      } catch (macDiscoveryError) {
-        console.error("Error discovering MAC addresses:", macDiscoveryError);
-        setError(macDiscoveryError instanceof Error ? macDiscoveryError.message : "Failed to discover MAC addresses");
+      } catch (vlansError) {
+        console.error("Error with VLAN processing:", vlansError);
+        setError(vlansError instanceof Error ? vlansError.message : "Error processing VLANs");
         toast({
-          title: "MAC Discovery Error",
-          description: macDiscoveryError instanceof Error ? macDiscoveryError.message : "An error occurred during MAC address discovery",
+          title: "VLAN Error",
+          description: "Failed to process VLAN information.",
           variant: "destructive",
         });
       }

@@ -37,7 +37,7 @@ export async function callBackendApi<T = any>(endpoint: string, data: any): Prom
       // Check if it's HTML (which would cause the JSON parse error)
       if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html")) {
         console.error(`Received HTML instead of JSON from ${endpoint}`);
-        throw new Error(`Received HTML response instead of JSON from ${endpoint}`);
+        throw new Error(`Received HTML response instead of JSON from ${endpoint}. This likely indicates a server routing issue or redirection.`);
       }
       
       // For other text responses, try to parse as JSON if possible
@@ -175,7 +175,7 @@ export async function executeSnmpWalk(
       
       // Check if it's HTML
       if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html")) {
-        return { error: "Received HTML instead of JSON from SNMP walk" };
+        return { error: "Received HTML instead of JSON from SNMP walk. This likely indicates a server issue or network routing problem." };
       }
       
       // Try to parse as JSON anyway
@@ -194,12 +194,13 @@ export async function executeSnmpWalk(
 
 /**
  * Discover MAC addresses on a switch using SNMP
+ * Updated to accept a list of VLANs to query
  */
 export async function discoverMacAddressesWithSNMP(
   deviceIp: string,
   community: string = 'public',
   version: string = '2c',
-  vlanId?: number
+  vlanIds?: number[]
 ): Promise<{
   macAddresses: Array<{
     macAddress: string;
@@ -211,12 +212,19 @@ export async function discoverMacAddressesWithSNMP(
   try {
     console.log(`Discovering MAC addresses for ${deviceIp} using SNMP...`);
     
-    const result = await callBackendApi("/snmp/discover-mac-addresses", {
+    const requestData: any = {
       ip: deviceIp,
       community,
-      version,
-      vlanId
-    });
+      version
+    };
+    
+    // If specific VLAN IDs are provided, include them in the request
+    if (vlanIds && vlanIds.length > 0) {
+      console.log(`Using specific VLANs for MAC discovery: ${vlanIds.join(', ')}`);
+      requestData.vlanIds = vlanIds;
+    }
+    
+    const result = await callBackendApi("/snmp/discover-mac-addresses", requestData);
     
     return {
       macAddresses: result.macAddresses || [],
