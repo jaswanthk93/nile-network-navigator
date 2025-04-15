@@ -1,4 +1,3 @@
-
 import { DiscoveredMacAddress } from "@/types/network";
 import { executeSnmpWalk, callBackendApi } from "@/utils/apiClient";
 
@@ -75,6 +74,7 @@ export async function getDeviceInfoViaSNMP(
 
 /**
  * Discover MAC addresses on a switch using SNMP
+ * Using a step-by-step approach with sorted VLANs
  */
 export async function discoverMacAddresses(
   ip: string,
@@ -88,26 +88,18 @@ export async function discoverMacAddresses(
       progressCallback("Starting MAC address discovery...", 0);
     }
 
-    // If no VLANs are provided, log a warning but try to continue with default VLAN 1
-    if (!vlanIds || vlanIds.length === 0) {
-      console.warn("No VLANs provided for MAC address discovery. Will use default VLAN 1.");
-      vlanIds = [1];
-    }
-
-    // Ensure we only have unique VLAN IDs
-    const uniqueVlanIds = [...new Set(vlanIds)];
-    
-    console.log(`Starting MAC address discovery with ${uniqueVlanIds.length} unique VLANs: ${uniqueVlanIds.join(', ')}`);
+    // Ensure we use sorted VLANs and log details
+    const sortedVlanIds = [...new Set(vlanIds)].sort((a, b) => a - b);
+    console.log(`Starting MAC address discovery with ${sortedVlanIds.length} unique VLANs in ascending order: ${sortedVlanIds.join(', ')}`);
     
     if (progressCallback) {
-      progressCallback(`Using ${uniqueVlanIds.length} VLANs for MAC address discovery...`, 10);
+      progressCallback(`Using ${sortedVlanIds.length} VLANs for MAC address discovery...`, 10);
     }
 
     try {
       // Call backend API directly with detailed logging
-      console.log(`Calling backend API for MAC address discovery with VLANs: ${uniqueVlanIds.join(', ')}`);
+      console.log(`Calling backend API for MAC address discovery with sorted VLANs: ${sortedVlanIds.join(', ')}`);
       
-      // Double check the endpoint is correct and add more detailed logging
       const endpoint = "/snmp/discover-mac-addresses";
       console.log(`Full endpoint URL: ${import.meta.env.VITE_BACKEND_URL || "http://localhost:3001/api"}${endpoint}`);
       
@@ -115,7 +107,7 @@ export async function discoverMacAddresses(
         ip,
         community,
         version,
-        vlanIds: uniqueVlanIds
+        vlanIds: sortedVlanIds
       };
       
       console.log(`Request data for MAC discovery:`, JSON.stringify(requestData, null, 2));
@@ -152,10 +144,10 @@ export async function discoverMacAddresses(
         console.warn("No MAC addresses were discovered. This could indicate a problem with the SNMP configuration or permissions.");
       }
       
-      // Ensure we return a properly formatted result even if backend returns unexpected data
+      // Ensure we return a properly formatted result
       return {
         macAddresses: result.macAddresses || [],
-        vlanIds: result.vlanIds || uniqueVlanIds
+        vlanIds: result.vlanIds || sortedVlanIds
       };
     } catch (error) {
       console.error("Error in MAC address discovery:", error);

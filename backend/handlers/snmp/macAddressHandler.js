@@ -42,7 +42,9 @@ exports.discoverMacAddresses = async (req, res) => {
       // Use the provided list of VLAN IDs
       // Make sure each VLAN ID is included only once
       vlans = [...new Set(vlanIds)];
-      logger.info(`[SNMP] Using provided list of ${vlans.length} unique VLANs: ${vlans.join(', ')}`);
+      // Sort vlans in ascending order
+      vlans.sort((a, b) => a - b);
+      logger.info(`[SNMP] Using provided list of ${vlans.length} unique VLANs in ascending order: ${vlans.join(', ')}`);
     } else if (vlanId) {
       // Query specific VLAN
       vlans = [vlanId];
@@ -52,9 +54,10 @@ exports.discoverMacAddresses = async (req, res) => {
       try {
         logger.info(`[SNMP] No VLANs specified, discovering VLANs first`);
         const vlanResult = await vlanHandler.discoverVlans(ip, community, version);
-        // Ensure unique VLAN IDs
+        // Ensure unique VLAN IDs and sort in ascending order
         vlans = [...new Set(vlanResult.vlans.map(vlan => vlan.vlanId))];
-        logger.info(`[SNMP] Discovered ${vlans.length} unique VLANs for MAC address lookup: ${vlans.join(', ')}`);
+        vlans.sort((a, b) => a - b);
+        logger.info(`[SNMP] Discovered ${vlans.length} unique VLANs for MAC address lookup in ascending order: ${vlans.join(', ')}`);
       } catch (error) {
         logger.error(`[SNMP] Failed to discover VLANs: ${error.message}. Will use default VLAN 1`);
         vlans = [1]; // Default to VLAN 1 if VLAN discovery fails
@@ -65,7 +68,7 @@ exports.discoverMacAddresses = async (req, res) => {
     const macAddresses = [];
     const processedVlans = new Set(); // Keep track of processed VLANs
     
-    // Execute a targeted walk for each VLAN, but only once per VLAN
+    // Execute a targeted walk for each VLAN, one at a time
     for (const vlan of vlans) {
       // Skip if we've already processed this VLAN
       if (processedVlans.has(vlan)) {
@@ -88,8 +91,7 @@ exports.discoverMacAddresses = async (req, res) => {
           timeout: 5000
         });
         
-        // Execute the specifically targeted walk for the MAC address table
-        // Instead of adding directly to the shared array, collect results per VLAN
+        // Execute the specifically targeted walk for the MAC address table for this VLAN
         const vlanMacs = await walkMacAddressTable(session, MAC_OIDS.bridgeMacToPort, vlan);
         
         // Add the collected MAC addresses from this VLAN to the overall results
@@ -136,11 +138,11 @@ exports.discoverMacAddresses = async (req, res) => {
 
 /**
  * Walk the MAC address table (dot1dTpFdbPort) for a specific VLAN
- * Returns results specific to this VLAN walk instead of modifying a shared array
+ * Returns results specific to this VLAN walk
  */
 function walkMacAddressTable(session, oid, vlanId) {
   return new Promise((resolve, reject) => {
-    // Store isolated MAC addresses for this specific VLAN walk
+    // Store MAC addresses for this specific VLAN walk
     const vlanMacs = [];
     
     function doneCb(error) {
@@ -148,8 +150,7 @@ function walkMacAddressTable(session, oid, vlanId) {
         logger.error(`[SNMP] Error in MAC address walk for VLAN ${vlanId}: ${error.message}`);
         return reject(error);
       }
-      // Ensure we're using the correct VLAN ID when logging completion
-      logger.info(`[SNMP] Successfully completed MAC address walk for VLAN ${vlanId}`);
+      logger.info(`[SNMP] Successfully completed MAC address walk for VLAN ${vlanId}, found ${vlanMacs.length} MACs`);
       resolve(vlanMacs); // Return the collected MAC addresses for this VLAN
     }
     

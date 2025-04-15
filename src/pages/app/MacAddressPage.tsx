@@ -73,7 +73,8 @@ const MacAddressPage = () => {
       const { data: vlans, error: vlansError } = await supabase
         .from('vlans')
         .select('*')
-        .eq('site_id', siteId);
+        .eq('site_id', siteId)
+        .order('vlan_id', { ascending: true });
         
       if (vlansError) {
         console.error("Error fetching VLANs from database:", vlansError);
@@ -85,7 +86,7 @@ const MacAddressPage = () => {
         return [];
       }
       
-      console.log(`Found ${vlans.length} VLANs in database:`, vlans.map(v => v.vlan_id));
+      console.log(`Found ${vlans.length} VLANs in database, sorted by VLAN ID:`, vlans.map(v => v.vlan_id));
       return vlans;
     } catch (error) {
       console.error("Error in fetchVlansFromDatabase:", error);
@@ -182,7 +183,7 @@ const MacAddressPage = () => {
         }
         
         const vlanIds = vlans.map(vlan => vlan.vlan_id);
-        console.log(`Using VLANs from database: ${vlanIds.join(', ')}`);
+        console.log(`Using sorted VLANs from database: ${vlanIds.join(', ')}`);
         
         const { data: subnets, error: subnetsError } = await supabase
           .from('subnets')
@@ -260,7 +261,7 @@ const MacAddressPage = () => {
         });
         
         try {
-          console.log(`Calling discoverMacAddresses with VLANs: ${vlanIds.join(', ')}`);
+          console.log(`Calling discoverMacAddresses with sorted VLANs: ${vlanIds.join(', ')}`);
           const macAddressResults = await discoverMacAddresses(
             switchIp,
             community,
