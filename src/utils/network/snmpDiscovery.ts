@@ -1,135 +1,138 @@
-/**
- * SNMP Discovery utilities for device information retrieval
- */
 
-import { discoverDeviceWithSNMP } from "@/utils/apiClient";
-import { discoverMacAddressesWithSNMP } from "@/utils/apiClient";
+import { DiscoveredMacAddress } from "@/types/network";
+import { executeSnmpWalk } from "@/utils/apiClient";
+
+interface MacAddressDiscoveryResult {
+  macAddresses: DiscoveredMacAddress[];
+  vlanIds: number[];
+}
 
 /**
- * Use SNMP to get device information
+ * Discover MAC addresses on a switch using SNMP
+ * This function performs targeted SNMP walks for each VLAN to discover MAC addresses
  */
-export async function getDeviceInfoViaSNMP(
-  ipAddress: string, 
-  updateProgress: (message: string, progress: number) => void,
-  useBackendConnection: boolean
-): Promise<{
-  hostname: string | null;
-  make: string | null;
-  model: string | null;
-  category: string | null;
-  sysDescr: string | null; // This property name needs to be preserved for consistency
-  error?: string;
-}> {
+export async function discoverMacAddresses(
+  ip: string,
+  community: string = 'public',
+  version: string = '2c',
+  progressCallback?: (message: string, progress: number) => void
+): Promise<MacAddressDiscoveryResult> {
   try {
-    updateProgress(`Retrieving SNMP information from ${ipAddress}...`, 1);
-    
-    // If backend connection is required but not available, throw an error
-    if (!useBackendConnection) {
-      throw new Error("Backend connection required for SNMP operations");
+    if (progressCallback) {
+      progressCallback("Starting MAC address discovery...", 0);
     }
-    
-    // Use backend connection for real SNMP data
-    try {
-      // Call the dedicated device discovery endpoint
-      const deviceInfo = await discoverDeviceWithSNMP(ipAddress);
-      
-      if (!deviceInfo) {
-        throw new Error("No device information returned from SNMP discovery");
+
+    // Get VLANs first using the VLAN discovery function
+    const { data: vlanData, error: vlanError } = await fetch('/api/vlans/discover', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ip,
+        community,
+        version
+      }),
+    }).then(res => res.json());
+
+    if (vlanError) {
+      console.error("Error discovering VLANs:", vlanError);
+      throw new Error(`Failed to discover VLANs: ${vlanError}`);
+    }
+
+    const vlans = vlanData?.vlans || [];
+    const vlanIds = vlans.map((vlan: any) => vlan.vlanId);
+
+    if (progressCallback) {
+      progressCallback(`Discovered ${vlanIds.length} VLANs. Starting MAC address collection...`, 10);
+    }
+
+    if (vlanIds.length === 0) {
+      throw new Error("No VLANs discovered. Cannot proceed with MAC address discovery.");
+    }
+
+    // MAC address collection - do a targeted SNMP walk for each VLAN
+    const macAddresses: DiscoveredMacAddress[] = [];
+    const macOid = '1.3.6.1.2.1.17.4.3.1.2'; // Bridge MIB - dot1dTpFdbPort
+
+    for (let i = 0; i < vlanIds.length; i++) {
+      const vlanId = vlanIds[i];
+      if (progressCallback) {
+        progressCallback(`Processing VLAN ${vlanId} (${i + 1}/${vlanIds.length})...`, 10 + (i / vlanIds.length) * 80);
       }
-      
-      console.log("SNMP device discovery result:", deviceInfo);
-      updateProgress(`SNMP information retrieved from ${ipAddress}`, 3);
-      
-      return {
-        hostname: deviceInfo.sysName || null,
-        make: deviceInfo.manufacturer || null,
-        model: deviceInfo.model || null,
-        category: deviceInfo.type || null,
-        sysDescr: deviceInfo.sysDescr || null // Keep case as sysDescr for consistency in the app
-      };
-    } catch (err) {
-      console.error("Error performing SNMP device discovery:", err);
-      const errorMessage = err instanceof Error ? err.message : "Unknown SNMP query error";
-      return {
-        hostname: null,
-        make: null,
-        model: null,
-        category: null,
-        sysDescr: null,
-        error: errorMessage
-      };
+
+      // For VLAN 1, use regular community string, for others use community@vlanId format
+      const vlanCommunity = vlanId === 1 ? community : `${community}@${vlanId}`;
+
+      try {
+        const { data: macData, error: macError } = await executeSnmpWalk(ip, vlanCommunity, macOid, version);
+
+        if (macError) {
+          console.warn(`Error walking MAC addresses for VLAN ${vlanId}:`, macError);
+          continue; // Skip this VLAN but continue with others
+        }
+
+        if (!macData || !macData.results) {
+          console.warn(`No MAC addresses found for VLAN ${vlanId}`);
+          continue;
+        }
+
+        // Process the results - extract MAC addresses from the OID
+        for (const result of macData.results) {
+          try {
+            const oidParts = result.oid.split('.');
+            // Check if we have the expected OID pattern
+            if (oidParts.length >= 6) {
+              // Extract the MAC address from the OID parts (last 6 parts)
+              const macParts = oidParts.slice(-6);
+              const mac = macParts.map(part => {
+                const hex = parseInt(part).toString(16).toUpperCase();
+                return hex.length === 1 ? `0${hex}` : hex;
+              }).join(':');
+
+              // Add MAC address to our list with VLAN ID
+              macAddresses.push({
+                macAddress: mac,
+                vlanId: vlanId,
+                deviceType: getMacDeviceType(mac),
+                // Include port as undefined to match the expected interface
+                port: undefined 
+              });
+            }
+          } catch (err) {
+            console.warn(`Error processing MAC result: ${err}`);
+          }
+        }
+      } catch (error) {
+        console.warn(`Failed to query VLAN ${vlanId}:`, error);
+      }
     }
-  } catch (error) {
-    console.error(`Error getting SNMP info from ${ipAddress}:`, error);
+
+    if (progressCallback) {
+      progressCallback(`MAC address discovery complete. Found ${macAddresses.length} MAC addresses.`, 100);
+    }
+
     return {
-      hostname: null,
-      make: null,
-      model: null,
-      category: null,
-      sysDescr: null,
-      error: error instanceof Error ? error.message : "Unknown error"
+      macAddresses,
+      vlanIds
     };
+  } catch (error) {
+    console.error("Error in discoverMacAddresses:", error);
+    throw error;
   }
 }
 
 /**
- * Discover MAC addresses on a device using SNMP
+ * Try to determine device type from MAC address OUI
  */
-export async function discoverMacAddresses(
-  ipAddress: string,
-  community: string = "public",
-  version: string = "2c",
-  updateProgress?: (message: string, progress: number) => void
-): Promise<{
-  macAddresses: Array<{
-    macAddress: string;
-    vlanId: number;
-    deviceType: string;
-  }>;
-  vlanIds: number[];
-}> {
-  try {
-    console.log(`Starting MAC address discovery on ${ipAddress} with community ${community} and version ${version}`);
-    
-    if (updateProgress) {
-      updateProgress(`Discovering MAC addresses on ${ipAddress}...`, 50);
-    }
-    
-    // Call the backend API to perform MAC address discovery
-    const result = await discoverMacAddressesWithSNMP(ipAddress, community, version);
-    
-    console.log('MAC Address discovery raw response:', result);
-    
-    if (!result || !result.macAddresses) {
-      console.error('Invalid response format from MAC address discovery');
-      throw new Error('Invalid response format from MAC address discovery');
-    }
-    
-    if (updateProgress) {
-      updateProgress(`Found ${result.macAddresses.length} MAC addresses across ${result.vlanIds?.length || 0} VLANs`, 100);
-    }
-    
-    if (!result.macAddresses || result.macAddresses.length === 0) {
-      console.warn('No MAC addresses found during discovery. This might indicate an SNMP configuration issue or a switch that does not support the necessary MIBs.');
-    } else {
-      console.log(`Successfully discovered ${result.macAddresses.length} MAC addresses across ${result.vlanIds?.length || 0} VLANs.`);
-      console.log(`VLAN IDs found: ${result.vlanIds?.join(', ') || 'None'}`);
-      
-      // Sample some of the discovered MAC addresses for debugging
-      const sampleSize = Math.min(5, result.macAddresses.length);
-      console.log(`Sample of discovered MAC addresses (${sampleSize} of ${result.macAddresses.length}):`);
-      for (let i = 0; i < sampleSize; i++) {
-        console.log(`- MAC: ${result.macAddresses[i].macAddress}, VLAN: ${result.macAddresses[i].vlanId}, Type: ${result.macAddresses[i].deviceType}`);
-      }
-    }
-    
-    // Ensure the required properties exist to avoid errors in the UI
-    return {
-      macAddresses: result.macAddresses || [],
-      vlanIds: result.vlanIds || []
-    };
-  } catch (error) {
-    console.error(`Error discovering MAC addresses on ${ipAddress}:`, error);
-    throw error;
-  }
+function getMacDeviceType(mac: string): string {
+  // Extract OUI (first 3 bytes of MAC)
+  const oui = mac.split(':').slice(0, 3).join(':').toUpperCase();
+  
+  // This would ideally be a lookup against an OUI database
+  // For demo purposes, just assigning random types based on hash
+  const types = ['Desktop', 'Mobile', 'IoT', 'Server', 'Network'];
+  const hash = oui.split(':').reduce((acc, val) => acc + parseInt(val, 16), 0);
+  
+  return types[hash % types.length];
 }
