@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { 
@@ -24,6 +23,14 @@ import { ArrowRight, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export interface SiteProps {
   id: string;
@@ -58,6 +65,8 @@ export const SiteCard = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
   const navigate = useNavigate();
 
   const getSubsections = (): SubsectionProps[] => {
@@ -149,38 +158,85 @@ export const SiteCard = ({
 
   const confirmDelete = async () => {
     setIsDeleting(true);
+    setDeleteError(null);
+    
     try {
-      await supabase
-        .from('devices')
+      console.log(`Starting deletion process for site: ${id}`);
+      
+      // Step 1: Delete MAC addresses related to this site
+      console.log("Deleting related MAC addresses...");
+      const { error: macError } = await supabase
+        .from('mac_addresses')
         .delete()
         .eq('site_id', id);
       
-      await supabase
-        .from('subnets')
-        .delete()
-        .eq('site_id', id);
+      if (macError) {
+        console.error("Error deleting MAC addresses:", macError);
+        throw new Error(`Failed to delete MAC addresses: ${macError.message}`);
+      }
       
-      await supabase
+      // Step 2: Delete VLAN information related to this site
+      console.log("Deleting related VLANs...");
+      const { error: vlanError } = await supabase
         .from('vlans')
         .delete()
         .eq('site_id', id);
       
-      await supabase
+      if (vlanError) {
+        console.error("Error deleting VLANs:", vlanError);
+        throw new Error(`Failed to delete VLANs: ${vlanError.message}`);
+      }
+      
+      // Step 3: Delete devices related to this site
+      console.log("Deleting related devices...");
+      const { error: deviceError } = await supabase
+        .from('devices')
+        .delete()
+        .eq('site_id', id);
+      
+      if (deviceError) {
+        console.error("Error deleting devices:", deviceError);
+        throw new Error(`Failed to delete devices: ${deviceError.message}`);
+      }
+      
+      // Step 4: Delete subnets related to this site
+      console.log("Deleting related subnets...");
+      const { error: subnetError } = await supabase
+        .from('subnets')
+        .delete()
+        .eq('site_id', id);
+      
+      if (subnetError) {
+        console.error("Error deleting subnets:", subnetError);
+        throw new Error(`Failed to delete subnets: ${subnetError.message}`);
+      }
+      
+      // Step 5: Finally, delete the site itself
+      console.log("Deleting site...");
+      const { error: siteError } = await supabase
         .from('sites')
         .delete()
         .eq('id', id);
       
+      if (siteError) {
+        console.error("Error deleting site:", siteError);
+        throw new Error(`Failed to delete site: ${siteError.message}`);
+      }
+      
+      console.log("Site deletion completed successfully");
       toast({
         title: "Site deleted",
         description: `Site "${name}" and all associated data have been removed.`,
       });
       
+      // If we get here, all deletions were successful
       onDelete();
     } catch (error) {
-      console.error("Error deleting site:", error);
+      console.error("Error in deletion process:", error);
+      setDeleteError(error instanceof Error ? error.message : "An unknown error occurred");
       toast({
-        title: "Error",
-        description: "Failed to delete site. Please try again.",
+        title: "Error deleting site",
+        description: "Failed to delete site. See error details for more information.",
         variant: "destructive",
       });
     } finally {
@@ -324,6 +380,28 @@ export const SiteCard = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!deleteError && showErrorDetails} onOpenChange={setShowErrorDetails}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Error Details</DialogTitle>
+            <DialogDescription>
+              There was a problem deleting the site. The error message is:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-muted p-4 rounded-md overflow-auto max-h-[200px] text-sm font-mono">
+            {deleteError}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="secondary" 
+              onClick={() => setShowErrorDetails(false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
