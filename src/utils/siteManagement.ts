@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 
@@ -30,7 +29,8 @@ export const deleteSite = async ({
       throw new Error(`Failed to fetch subnets: ${subnetFetchError.message}`);
     }
     
-    const subnetIds = (subnetData?.map(subnet => subnet.id) || []) as string[];
+    // Ensure subnetIds is always an array of strings
+    const subnetIds: string[] = (subnetData?.map(subnet => subnet.id) || []);
     console.log(`Found ${subnetIds.length} subnets to delete`, subnetIds);
     
     // Step 2: Delete MAC addresses by site_id first
