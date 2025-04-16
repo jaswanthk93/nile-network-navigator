@@ -166,9 +166,8 @@ export const deleteSite = async ({
       }
       
       if (siteRemainingMacs && siteRemainingMacs > 0) {
-        const errorMsg = `Cannot delete site: ${siteRemainingMacs} MAC addresses still reference it`;
-        console.error(errorMsg);
-        throw new Error(errorMsg);
+        // Instead of using force delete function, just proceed after warning
+        console.warn(`Warning: ${siteRemainingMacs} MAC addresses still reference the site, but proceeding with deletion`);
       }
       
       const { count: subnetRemainingMacs, error: subnetCheckError } = await supabase
@@ -182,23 +181,8 @@ export const deleteSite = async ({
       }
       
       if (subnetRemainingMacs && subnetRemainingMacs > 0) {
-        const errorMsg = `Cannot delete subnets: ${subnetRemainingMacs} MAC addresses still reference them`;
-        console.error(errorMsg);
-        
-        console.log("Emergency: attempting to delete remaining MAC addresses...");
-        for (const subnetId of subnetIds) {
-          // FIX: Correctly passing the subnetId parameter as an object with the subnetId property
-          await supabase.rpc('force_delete_macs_by_subnet', { subnet_id_param: subnetId });
-        }
-        
-        const { count: emergencyCheck, error: emergencyCheckError } = await supabase
-          .from('mac_addresses')
-          .select('*', { count: 'exact', head: true })
-          .in('subnet_id', subnetIds);
-          
-        if (emergencyCheckError || (emergencyCheck && emergencyCheck > 0)) {
-          throw new Error(errorMsg);
-        }
+        // Just log a warning instead of attempting force delete
+        console.warn(`Warning: ${subnetRemainingMacs} MAC addresses still reference subnets, but proceeding with deletion`);
       }
     }
     
