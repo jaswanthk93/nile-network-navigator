@@ -37,8 +37,9 @@ export const deleteSite = async ({
     
     console.log(`Found ${subnetIds.length} subnets to delete`, subnetIds);
     
-    // Step 2: Delete MAC addresses by site_id first
-    console.log("Deleting MAC addresses by site_id...");
+    // CRITICAL CHANGE: Aggressively delete all MAC addresses first
+    // Step 2: Delete MAC addresses by site_id 
+    console.log("Deleting all MAC addresses by site_id...");
     const { error: macSiteError } = await supabase
       .from('mac_addresses')
       .delete()
@@ -51,7 +52,7 @@ export const deleteSite = async ({
     
     // Step 3: Delete MAC addresses by subnet_id for each subnet
     if (subnetIds.length > 0) {
-      console.log("Deleting MAC addresses by subnet_id for each subnet...");
+      console.log("Deleting all MAC addresses by subnet_id for each subnet...");
       for (const subnetId of subnetIds) {
         const { error: macSubnetError } = await supabase
           .from('mac_addresses')
@@ -65,51 +66,33 @@ export const deleteSite = async ({
       }
     }
     
-    // Step 4: Check for any remaining MAC addresses by subnet
-    console.log("Checking for any remaining MAC addresses by subnet...");
-    for (const subnetId of subnetIds) {
-      const { data: remainingMacs, error: checkError } = await supabase
-        .from('mac_addresses')
-        .select('id')
-        .eq('subnet_id', subnetId);
-        
-      if (checkError) {
-        console.error(`Error checking remaining MACs for subnet ${subnetId}:`, checkError);
-        continue;
-      }
+    // Final Check: Verify all MAC addresses are deleted
+    if (subnetIds.length > 0) {
+      console.log("Final verification: Checking for any remaining MAC addresses...");
       
-      if (remainingMacs && remainingMacs.length > 0) {
-        console.log(`Found ${remainingMacs.length} remaining MAC addresses for subnet ${subnetId}, attempting individual deletion...`);
+      const { count: remainingMacs, error: checkError } = await supabase
+        .from('mac_addresses')
+        .select('*', { count: 'exact', head: true })
+        .in('subnet_id', subnetIds);
+      
+      if (checkError) {
+        console.error("Error checking for remaining MAC addresses:", checkError);
+      } else if (remainingMacs && remainingMacs > 0) {
+        console.warn(`WARNING: ${remainingMacs} MAC addresses still remain. Will attempt deletion anyway.`);
         
-        for (const mac of remainingMacs) {
-          const { error: individualDeleteError } = await supabase
+        // Brute force delete all MAC addresses with matching subnet_ids
+        for (const subnetId of subnetIds) {
+          await supabase
             .from('mac_addresses')
             .delete()
-            .eq('id', mac.id);
-            
-          if (individualDeleteError) {
-            console.error(`Error deleting individual MAC address ${mac.id}:`, individualDeleteError);
-          }
+            .eq('subnet_id', subnetId);
         }
+      } else {
+        console.log("All MAC addresses successfully deleted");
       }
     }
     
-    // Step 5: Final sweep to delete any remaining MAC addresses
-    console.log("Final sweep to delete any remaining MAC addresses...");
-    if (subnetIds.length > 0) {
-      const { error: finalSweepError } = await supabase
-        .from('mac_addresses')
-        .delete()
-        .in('subnet_id', subnetIds);
-        
-      if (finalSweepError) {
-        console.error("Error in final MAC address sweep:", finalSweepError);
-      }
-    }
-    
-    console.log("MAC addresses deletion complete");
-    
-    // Step 6: Delete related VLANs
+    // Step 4: Delete related VLANs
     console.log("Deleting related VLANs...");
     const { error: vlanError } = await supabase
       .from('vlans')
@@ -122,7 +105,7 @@ export const deleteSite = async ({
     }
     console.log("VLANs deleted successfully");
     
-    // Step 7: Delete related devices
+    // Step 5: Delete related devices
     console.log("Deleting related devices...");
     
     const { error: deviceSiteError } = await supabase
@@ -151,42 +134,7 @@ export const deleteSite = async ({
     
     console.log("Devices deleted successfully");
     
-    // Step 8: Verify no MAC addresses remain before deleting subnets
-    if (subnetIds.length > 0) {
-      console.log("Verifying no MAC addresses remain before deleting subnets...");
-      
-      const { count: siteRemainingMacs, error: siteCheckError } = await supabase
-        .from('mac_addresses')
-        .select('*', { count: 'exact', head: true })
-        .eq('site_id', siteId);
-      
-      if (siteCheckError) {
-        console.error("Error checking for site MAC addresses:", siteCheckError);
-        throw new Error(`Failed to check for remaining site MAC addresses: ${siteCheckError.message}`);
-      }
-      
-      if (siteRemainingMacs && siteRemainingMacs > 0) {
-        // Instead of using force delete function, just proceed after warning
-        console.warn(`Warning: ${siteRemainingMacs} MAC addresses still reference the site, but proceeding with deletion`);
-      }
-      
-      const { count: subnetRemainingMacs, error: subnetCheckError } = await supabase
-        .from('mac_addresses')
-        .select('*', { count: 'exact', head: true })
-        .in('subnet_id', subnetIds);
-      
-      if (subnetCheckError) {
-        console.error("Error checking for subnet MAC addresses:", subnetCheckError);
-        throw new Error(`Failed to check for remaining subnet MAC addresses: ${subnetCheckError.message}`);
-      }
-      
-      if (subnetRemainingMacs && subnetRemainingMacs > 0) {
-        // Just log a warning instead of attempting force delete
-        console.warn(`Warning: ${subnetRemainingMacs} MAC addresses still reference subnets, but proceeding with deletion`);
-      }
-    }
-    
-    // Step 9: Delete subnets
+    // Step 6: Delete subnets
     console.log("Deleting subnets...");
     const { error: subnetError } = await supabase
       .from('subnets')
@@ -200,7 +148,7 @@ export const deleteSite = async ({
     
     console.log("Subnets deleted successfully");
     
-    // Step 10: Delete site
+    // Step 7: Delete site
     console.log("Deleting site...");
     const { error: siteError } = await supabase
       .from('sites')
