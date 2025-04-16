@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { 
@@ -175,8 +176,8 @@ export const SiteCard = ({
         throw new Error(`Failed to fetch subnets: ${subnetFetchError.message}`);
       }
       
-      // Fix for TypeScript error - ensure subnetIds is properly typed
-      const subnetIds = (subnetData?.map(subnet => subnet.id) || []) as string[];
+      // Make sure subnetIds is properly typed for the .in() method
+      const subnetIds = (subnetData?.map(subnet => subnet.id) || []);
       console.log(`Found ${subnetIds.length} subnets to delete`, subnetIds);
       
       // Step 1: Delete ALL MAC addresses related to this site and its subnets
@@ -248,7 +249,7 @@ export const SiteCard = ({
         const { error: finalSweepError } = await supabase
           .from('mac_addresses')
           .delete()
-          .in('subnet_id', subnetIds as unknown[] as string[]);
+          .in('subnet_id', subnetIds as any);
           
         if (finalSweepError) {
           console.error("Error in final MAC address sweep:", finalSweepError);
@@ -327,7 +328,7 @@ export const SiteCard = ({
         const { count: subnetRemainingMacs, error: subnetCheckError } = await supabase
           .from('mac_addresses')
           .select('*', { count: 'exact', head: true })
-          .in('subnet_id', subnetIds as unknown[] as string[]);
+          .in('subnet_id', subnetIds as any);
         
         if (subnetCheckError) {
           console.error("Error checking for subnet MAC addresses:", subnetCheckError);
@@ -349,7 +350,7 @@ export const SiteCard = ({
           const { count: emergencyCheck, error: emergencyCheckError } = await supabase
             .from('mac_addresses')
             .select('*', { count: 'exact', head: true })
-            .in('subnet_id', subnetIds as unknown[] as string[]);
+            .in('subnet_id', subnetIds as any);
             
           if (emergencyCheckError || (emergencyCheck && emergencyCheck > 0)) {
             throw new Error(errorMsg);
