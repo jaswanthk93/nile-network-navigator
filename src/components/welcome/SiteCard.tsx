@@ -164,7 +164,8 @@ export const SiteCard = ({
     try {
       console.log(`Starting deletion process for site: ${id}`);
       
-      // Step 1: First delete MAC addresses related to this site
+      // Step 1: First we need to delete all MAC addresses for this site
+      // This needs to happen first because MAC addresses reference both subnets and sites
       console.log("Step 1: Deleting related MAC addresses...");
       const { error: macError } = await supabase
         .from('mac_addresses')
@@ -175,6 +176,7 @@ export const SiteCard = ({
         console.error("Error deleting MAC addresses:", macError);
         throw new Error(`Failed to delete MAC addresses: ${macError.message}`);
       }
+      console.log("MAC addresses deleted successfully");
       
       // Step 2: Delete VLAN information related to this site
       console.log("Step 2: Deleting related VLANs...");
@@ -187,6 +189,7 @@ export const SiteCard = ({
         console.error("Error deleting VLANs:", vlanError);
         throw new Error(`Failed to delete VLANs: ${vlanError.message}`);
       }
+      console.log("VLANs deleted successfully");
       
       // Step 3: Delete devices related to this site
       console.log("Step 3: Deleting related devices...");
@@ -199,8 +202,10 @@ export const SiteCard = ({
         console.error("Error deleting devices:", deviceError);
         throw new Error(`Failed to delete devices: ${deviceError.message}`);
       }
+      console.log("Devices deleted successfully");
       
       // Step 4: Delete subnets related to this site
+      // This can only happen after devices and MAC addresses are deleted
       console.log("Step 4: Deleting related subnets...");
       const { error: subnetError } = await supabase
         .from('subnets')
@@ -211,6 +216,7 @@ export const SiteCard = ({
         console.error("Error deleting subnets:", subnetError);
         throw new Error(`Failed to delete subnets: ${subnetError.message}`);
       }
+      console.log("Subnets deleted successfully");
       
       // Step 5: Finally, delete the site itself
       console.log("Step 5: Deleting site...");
