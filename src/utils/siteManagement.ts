@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 
@@ -99,7 +100,7 @@ export const deleteSite = async ({
       const { error: finalSweepError } = await supabase
         .from('mac_addresses')
         .delete()
-        .in('subnet_id', subnetIds as string[]);
+        .in('subnet_id', subnetIds);
         
       if (finalSweepError) {
         console.error("Error in final MAC address sweep:", finalSweepError);
@@ -173,7 +174,7 @@ export const deleteSite = async ({
       const { count: subnetRemainingMacs, error: subnetCheckError } = await supabase
         .from('mac_addresses')
         .select('*', { count: 'exact', head: true })
-        .in('subnet_id', subnetIds as string[]);
+        .in('subnet_id', subnetIds);
       
       if (subnetCheckError) {
         console.error("Error checking for subnet MAC addresses:", subnetCheckError);
@@ -192,7 +193,7 @@ export const deleteSite = async ({
         const { count: emergencyCheck, error: emergencyCheckError } = await supabase
           .from('mac_addresses')
           .select('*', { count: 'exact', head: true })
-          .in('subnet_id', subnetIds as string[]);
+          .in('subnet_id', subnetIds);
           
         if (emergencyCheckError || (emergencyCheck && emergencyCheck > 0)) {
           throw new Error(errorMsg);
