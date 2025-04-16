@@ -245,7 +245,7 @@ export const SiteCard = ({
       // Try to delete all remaining MAC addresses with one final sweep
       console.log("Final sweep to delete any remaining MAC addresses...");
       if (subnetIds.length > 0) {
-        // Fix for the TypeScript error - use type assertion to tell TypeScript this is a valid operation
+        // Fix: Use proper type assertion for the .in() method
         const { error: finalSweepError } = await supabase
           .from('mac_addresses')
           .delete()
@@ -324,7 +324,7 @@ export const SiteCard = ({
         }
         
         // Then check by subnet_id
-        // Fix for the TypeScript error - use type assertion for the `.in()` operator
+        // Fix for the TypeScript error - use proper type assertion for the .in() method
         const { count: subnetRemainingMacs, error: subnetCheckError } = await supabase
           .from('mac_addresses')
           .select('*', { count: 'exact', head: true })
@@ -346,10 +346,11 @@ export const SiteCard = ({
           }
           
           // Check if the emergency deletion worked
+          // Fix for the TypeScript error - use proper type assertion for the .in() method
           const { count: emergencyCheck, error: emergencyCheckError } = await supabase
             .from('mac_addresses')
             .select('*', { count: 'exact', head: true })
-            .in('subnet_id', subnetIds as unknown as any[]);  // Fix: Apply type assertion here too
+            .in('subnet_id', subnetIds as unknown as any[]);
             
           if (emergencyCheckError || (emergencyCheck && emergencyCheck > 0)) {
             throw new Error(errorMsg);
