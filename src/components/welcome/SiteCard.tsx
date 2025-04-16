@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { 
@@ -176,8 +175,8 @@ export const SiteCard = ({
         throw new Error(`Failed to fetch subnets: ${subnetFetchError.message}`);
       }
       
-      // Fix for TypeScript error - ensure subnetIds is properly typed as string[]
-      const subnetIds: string[] = subnetData?.map(subnet => subnet.id) || [];
+      // Fix for TypeScript error - ensure subnetIds is properly typed
+      const subnetIds = (subnetData?.map(subnet => subnet.id) || []) as string[];
       console.log(`Found ${subnetIds.length} subnets to delete`, subnetIds);
       
       // Step 1: Delete ALL MAC addresses related to this site and its subnets
@@ -245,11 +244,11 @@ export const SiteCard = ({
       // Try to delete all remaining MAC addresses with one final sweep
       console.log("Final sweep to delete any remaining MAC addresses...");
       if (subnetIds.length > 0) {
-        // Fix: Use proper type assertion for the .in() method
+        // Fix for TypeScript error - use explicit type cast for subnetIds
         const { error: finalSweepError } = await supabase
           .from('mac_addresses')
           .delete()
-          .in('subnet_id', subnetIds as any[]);
+          .in('subnet_id', subnetIds as unknown[] as string[]);
           
         if (finalSweepError) {
           console.error("Error in final MAC address sweep:", finalSweepError);
@@ -324,11 +323,11 @@ export const SiteCard = ({
         }
         
         // Then check by subnet_id
-        // Fix: Use proper type assertion for the .in() method
+        // Fix for TypeScript error - use explicit type cast for subnetIds
         const { count: subnetRemainingMacs, error: subnetCheckError } = await supabase
           .from('mac_addresses')
           .select('*', { count: 'exact', head: true })
-          .in('subnet_id', subnetIds as any[]);
+          .in('subnet_id', subnetIds as unknown[] as string[]);
         
         if (subnetCheckError) {
           console.error("Error checking for subnet MAC addresses:", subnetCheckError);
@@ -346,11 +345,11 @@ export const SiteCard = ({
           }
           
           // Check if the emergency deletion worked
-          // Fix: Use proper type assertion for the .in() method
+          // Fix for TypeScript error - use explicit type cast for subnetIds
           const { count: emergencyCheck, error: emergencyCheckError } = await supabase
             .from('mac_addresses')
             .select('*', { count: 'exact', head: true })
-            .in('subnet_id', subnetIds as any[]);
+            .in('subnet_id', subnetIds as unknown[] as string[]);
             
           if (emergencyCheckError || (emergencyCheck && emergencyCheck > 0)) {
             throw new Error(errorMsg);
