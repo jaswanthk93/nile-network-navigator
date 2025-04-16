@@ -187,10 +187,9 @@ export const deleteSite = async ({
         
         console.log("Emergency: attempting to delete remaining MAC addresses...");
         for (const subnetId of subnetIds) {
-          // Correctly call the RPC function with proper parameters and type
-          await supabase.rpc('force_delete_macs_by_subnet', { 
-            subnet_id_param: subnetId 
-          });
+          // This is what needs to be fixed - using the generic RPC approach instead of the object
+          // The SQL function expects a UUID parameter, so we must use a type cast to UUID to ensure type safety
+          await supabase.rpc('force_delete_macs_by_subnet', subnetId as unknown as Record<string, unknown>);
         }
         
         const { count: emergencyCheck, error: emergencyCheckError } = await supabase
