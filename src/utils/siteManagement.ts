@@ -187,7 +187,8 @@ export const deleteSite = async ({
         
         console.log("Emergency: attempting to delete remaining MAC addresses...");
         for (const subnetId of subnetIds) {
-          await supabase.rpc('force_delete_macs_by_subnet', { subnetId });
+          // FIX: Correctly passing the subnetId parameter as an object with the subnetId property
+          await supabase.rpc('force_delete_macs_by_subnet', { subnet_id_param: subnetId });
         }
         
         const { count: emergencyCheck, error: emergencyCheckError } = await supabase
