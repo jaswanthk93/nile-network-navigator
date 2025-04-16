@@ -29,8 +29,11 @@ export const deleteSite = async ({
       throw new Error(`Failed to fetch subnets: ${subnetFetchError.message}`);
     }
     
-    // Ensure subnetIds is always an array of strings
-    const subnetIds: string[] = (subnetData?.map(subnet => subnet.id) || []);
+    // Ensure subnetIds is an array of strings, fallback to empty array
+    const subnetIds: string[] = subnetData ? 
+      subnetData.map(subnet => subnet.id).filter(Boolean) : 
+      [];
+    
     console.log(`Found ${subnetIds.length} subnets to delete`, subnetIds);
     
     // Step 2: Delete MAC addresses by site_id first
@@ -59,47 +62,47 @@ export const deleteSite = async ({
           throw new Error(`Failed to delete MAC addresses for subnet: ${macSubnetError.message}`);
         }
       }
-      
-      // Step 4: Check for any remaining MAC addresses by subnet
-      console.log("Checking for any remaining MAC addresses by subnet...");
-      for (const subnetId of subnetIds) {
-        const { data: remainingMacs, error: checkError } = await supabase
-          .from('mac_addresses')
-          .select('id')
-          .eq('subnet_id', subnetId);
-          
-        if (checkError) {
-          console.error(`Error checking remaining MACs for subnet ${subnetId}:`, checkError);
-          continue;
-        }
+    }
+    
+    // Step 4: Check for any remaining MAC addresses by subnet
+    console.log("Checking for any remaining MAC addresses by subnet...");
+    for (const subnetId of subnetIds) {
+      const { data: remainingMacs, error: checkError } = await supabase
+        .from('mac_addresses')
+        .select('id')
+        .eq('subnet_id', subnetId);
         
-        if (remainingMacs && remainingMacs.length > 0) {
-          console.log(`Found ${remainingMacs.length} remaining MAC addresses for subnet ${subnetId}, attempting individual deletion...`);
-          
-          for (const mac of remainingMacs) {
-            const { error: individualDeleteError } = await supabase
-              .from('mac_addresses')
-              .delete()
-              .eq('id', mac.id);
-              
-            if (individualDeleteError) {
-              console.error(`Error deleting individual MAC address ${mac.id}:`, individualDeleteError);
-            }
+      if (checkError) {
+        console.error(`Error checking remaining MACs for subnet ${subnetId}:`, checkError);
+        continue;
+      }
+      
+      if (remainingMacs && remainingMacs.length > 0) {
+        console.log(`Found ${remainingMacs.length} remaining MAC addresses for subnet ${subnetId}, attempting individual deletion...`);
+        
+        for (const mac of remainingMacs) {
+          const { error: individualDeleteError } = await supabase
+            .from('mac_addresses')
+            .delete()
+            .eq('id', mac.id);
+            
+          if (individualDeleteError) {
+            console.error(`Error deleting individual MAC address ${mac.id}:`, individualDeleteError);
           }
         }
       }
-      
-      // Step 5: Final sweep to delete any remaining MAC addresses
-      console.log("Final sweep to delete any remaining MAC addresses...");
-      if (subnetIds.length > 0) {
-        const { error: finalSweepError } = await supabase
-          .from('mac_addresses')
-          .delete()
-          .in('subnet_id', subnetIds as string[]);
-          
-        if (finalSweepError) {
-          console.error("Error in final MAC address sweep:", finalSweepError);
-        }
+    }
+    
+    // Step 5: Final sweep to delete any remaining MAC addresses
+    console.log("Final sweep to delete any remaining MAC addresses...");
+    if (subnetIds.length > 0) {
+      const { error: finalSweepError } = await supabase
+        .from('mac_addresses')
+        .delete()
+        .in('subnet_id', subnetIds as string[]);
+        
+      if (finalSweepError) {
+        console.error("Error in final MAC address sweep:", finalSweepError);
       }
     }
     
