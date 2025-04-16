@@ -349,7 +349,7 @@ export const SiteCard = ({
           const { count: emergencyCheck, error: emergencyCheckError } = await supabase
             .from('mac_addresses')
             .select('*', { count: 'exact', head: true })
-            .in('subnet_id', subnetIds as unknown as any[]);
+            .in('subnet_id', subnetIds as unknown as any[]);  // Fix: Apply type assertion here too
             
           if (emergencyCheckError || (emergencyCheck && emergencyCheck > 0)) {
             throw new Error(errorMsg);
