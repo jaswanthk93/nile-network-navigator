@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { 
@@ -163,8 +164,8 @@ export const SiteCard = ({
     try {
       console.log(`Starting deletion process for site: ${id}`);
       
-      // Step 1: Delete MAC addresses related to this site
-      console.log("Deleting related MAC addresses...");
+      // Step 1: First delete MAC addresses related to this site
+      console.log("Step 1: Deleting related MAC addresses...");
       const { error: macError } = await supabase
         .from('mac_addresses')
         .delete()
@@ -176,7 +177,7 @@ export const SiteCard = ({
       }
       
       // Step 2: Delete VLAN information related to this site
-      console.log("Deleting related VLANs...");
+      console.log("Step 2: Deleting related VLANs...");
       const { error: vlanError } = await supabase
         .from('vlans')
         .delete()
@@ -188,7 +189,7 @@ export const SiteCard = ({
       }
       
       // Step 3: Delete devices related to this site
-      console.log("Deleting related devices...");
+      console.log("Step 3: Deleting related devices...");
       const { error: deviceError } = await supabase
         .from('devices')
         .delete()
@@ -200,7 +201,7 @@ export const SiteCard = ({
       }
       
       // Step 4: Delete subnets related to this site
-      console.log("Deleting related subnets...");
+      console.log("Step 4: Deleting related subnets...");
       const { error: subnetError } = await supabase
         .from('subnets')
         .delete()
@@ -212,7 +213,7 @@ export const SiteCard = ({
       }
       
       // Step 5: Finally, delete the site itself
-      console.log("Deleting site...");
+      console.log("Step 5: Deleting site...");
       const { error: siteError } = await supabase
         .from('sites')
         .delete()
@@ -239,6 +240,7 @@ export const SiteCard = ({
         description: "Failed to delete site. See error details for more information.",
         variant: "destructive",
       });
+      setShowErrorDetails(true);
     } finally {
       setIsDeleting(false);
       setShowDeleteDialog(false);
