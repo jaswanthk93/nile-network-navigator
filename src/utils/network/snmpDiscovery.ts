@@ -63,6 +63,35 @@ export async function getDeviceInfoViaSNMP(
       } catch (modelError) {
         console.warn(`Error getting exact model info via Entity MIB: ${modelError}`);
       }
+      
+      // Try to get entity physical class information for better device type detection
+      let enhancedCategory = null;
+      try {
+        console.log(`Getting entity physical class information for ${ip}`);
+        // Get entity physical class data
+        const entityClassResponse = await executeSnmpWalk(ip, SNMP_OIDS.entPhysicalClass);
+        // Get entity physical description data
+        const entityDescrResponse = await executeSnmpWalk(ip, SNMP_OIDS.entPhysicalDescr);
+        
+        if (entityClassResponse && !entityClassResponse.error && 
+            entityDescrResponse && !entityDescrResponse.error) {
+          const entityData = {
+            entPhysicalClass: entityClassResponse.results || {},
+            entPhysicalDescr: entityDescrResponse.results || {}
+          };
+          
+          // Use the enhanced function to determine device category
+          enhancedCategory = determineDeviceCategory(
+            data?.device?.sysDescr || '', 
+            data?.device?.sysObjectID || '',
+            entityData
+          );
+          
+          console.log(`Enhanced device category determination for ${ip}: ${enhancedCategory}`);
+        }
+      } catch (categoryError) {
+        console.warn(`Error getting enhanced category info: ${categoryError}`);
+      }
 
       if (updateProgress) {
         updateProgress(`Received SNMP information for ${ip}`, 10);
@@ -73,8 +102,9 @@ export async function getDeviceInfoViaSNMP(
         hostname: data?.device?.sysName || null, // Using sysName directly as the hostname
         make: data?.device?.manufacturer || null,
         model: exactModel || data?.device?.model || null, // Prioritize exact model if available
-        category: data?.device?.type || 'Unknown',
-        sysDescr: data?.device?.sysDescr || null
+        category: enhancedCategory || data?.device?.type || 'Unknown',
+        sysDescr: data?.device?.sysDescr || null,
+        sysObjectID: data?.device?.sysObjectID || null
       };
       
       if (deviceInfo.hostname) {
@@ -361,4 +391,23 @@ function getMacDeviceType(mac: string): string {
   const hash = oui.split(':').reduce((acc, val) => acc + parseInt(val, 16), 0);
   
   return types[hash % types.length];
+}
+
+/**
+ * Determine device category based on sysDescr and sysObjectID
+ */
+function determineDeviceCategory(sysDescr: string, sysObjectID: string, entityData: any): string {
+  // Example logic to determine category based on sysDescr and sysObjectID
+  // This is a placeholder and should be replaced with actual logic
+  if (sysDescr.includes('Switch')) {
+    return 'Switch';
+  } else if (sysDescr.includes('Router')) {
+    return 'Router';
+  } else if (entityData.entPhysicalClass.entPhysicalClass === 'Switch') {
+    return 'Switch';
+  } else if (entityData.entPhysicalClass.entPhysicalClass === 'Router') {
+    return 'Router';
+  } else {
+    return 'Unknown';
+  }
 }

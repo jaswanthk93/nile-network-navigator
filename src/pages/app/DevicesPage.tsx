@@ -7,7 +7,7 @@ import { DeviceTable } from "@/components/devices/DeviceTable";
 import VerificationBanner from "@/components/devices/VerificationBanner";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Server, ArrowLeft, ArrowRight } from "lucide-react";
+import { Server, ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 
 const DevicesPage = () => {
   const navigate = useNavigate();
@@ -17,9 +17,11 @@ const DevicesPage = () => {
     isLoading, 
     handleSaveEdit, 
     handleDeleteDevice,
-    confirmAllDevices 
+    confirmAllDevices,
+    refreshDevices
   } = useDeviceData(user?.id);
   const [confirmingDevices, setConfirmingDevices] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   
   const needsVerificationCount = devices.filter(d => d.needsVerification).length;
   
@@ -31,6 +33,12 @@ const DevicesPage = () => {
     if (success) {
       navigate("/vlans");
     }
+  };
+  
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refreshDevices();
+    setRefreshing(false);
   };
   
   return (
@@ -50,14 +58,26 @@ const DevicesPage = () => {
       )}
       
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Server className="h-5 w-5" />
-            Device Inventory
-          </CardTitle>
-          <CardDescription>
-            These devices were discovered on your network. Make any necessary corrections before proceeding.
-          </CardDescription>
+        <CardHeader className="flex flex-row justify-between items-center">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Server className="h-5 w-5" />
+              Device Inventory
+            </CardTitle>
+            <CardDescription>
+              These devices were discovered on your network. Make any necessary corrections before proceeding.
+            </CardDescription>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex gap-2 items-center"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh Devices'}
+          </Button>
         </CardHeader>
         <CardContent>
           <DeviceTable 

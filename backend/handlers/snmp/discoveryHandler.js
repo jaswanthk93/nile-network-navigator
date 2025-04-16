@@ -101,6 +101,101 @@ exports.discoverDevice = async (req, res) => {
       }
     }
     
+    // Enhanced device type detection - also check entity MIB for chassis class
+    try {
+      const entityClassOid = '1.3.6.1.2.1.47.1.1.1.1.5'; // physical class
+      
+      // Create a new SNMP session for this specific query
+      const snmp = require('net-snmp');
+      const snmpVersion = version === '1' ? snmp.Version1 : snmp.Version2c;
+      const session = snmp.createSession(ip, community, {
+        version: snmpVersion,
+        retries: 1,
+        timeout: 5000
+      });
+      
+      // Look for chassis class data for better device type identification
+      const physicalClassData = await new Promise((resolve, reject) => {
+        logger.info(`[SNMP] Walking OID ${entityClassOid} for device type identification`);
+        
+        const results = {};
+        session.walk(entityClassOid, 10, (varbinds) => {
+          for (let i = 0; i < varbinds.length; i++) {
+            if (snmp.isVarbindError(varbinds[i])) {
+              continue;
+            }
+            
+            const classValue = varbinds[i].value;
+            if (classValue) {
+              results[varbinds[i].oid] = classValue;
+            }
+          }
+        }, (error) => {
+          if (error) {
+            resolve({});
+          } else {
+            resolve(results);
+          }
+          session.close();
+        });
+      });
+      
+      // If we found physical class data, we can enhance the device type detection
+      if (Object.keys(physicalClassData).length > 0) {
+        logger.info(`[SNMP] Found ${Object.keys(physicalClassData).length} physical class entries for enhanced device type detection`);
+        
+        // Check if the device has chassis (value 3) entries
+        const hasChassisEntries = Object.values(physicalClassData).some(value => value === 3);
+        
+        if (hasChassisEntries && deviceInfo.type === 'Other') {
+          // Get interface type information to better determine device type
+          const ifTypeOid = '1.3.6.1.2.1.2.2.1.3'; // ifType
+          
+          const ifTypeData = await new Promise((resolve, reject) => {
+            const session = snmp.createSession(ip, community, {
+              version: snmpVersion,
+              retries: 1,
+              timeout: 5000
+            });
+            
+            const results = {};
+            session.walk(ifTypeOid, 10, (varbinds) => {
+              for (let i = 0; i < varbinds.length; i++) {
+                if (!snmp.isVarbindError(varbinds[i])) {
+                  results[varbinds[i].oid] = varbinds[i].value;
+                }
+              }
+            }, (error) => {
+              resolve(results);
+              session.close();
+            });
+          });
+          
+          // Count interface types to help determine device type
+          const ifTypeCounts = {};
+          Object.values(ifTypeData).forEach(type => {
+            ifTypeCounts[type] = (ifTypeCounts[type] || 0) + 1;
+          });
+          
+          logger.info(`[SNMP] Interface type distribution: ${JSON.stringify(ifTypeCounts)}`);
+          
+          // Ethernet interfaces (6) are common in switches
+          if (ifTypeCounts['6'] && ifTypeCounts['6'] > 10) {
+            deviceInfo.type = 'Switch';
+            logger.info(`[SNMP] Enhanced device type detection: identified as Switch based on interface types`);
+          }
+          // Many PPP (23) or tunnel (131) interfaces suggest a router
+          else if ((ifTypeCounts['23'] && ifTypeCounts['23'] > 3) || 
+                   (ifTypeCounts['131'] && ifTypeCounts['131'] > 3)) {
+            deviceInfo.type = 'Router';
+            logger.info(`[SNMP] Enhanced device type detection: identified as Router based on interface types`);
+          }
+        }
+      }
+    } catch (enhancedTypeError) {
+      logger.warn(`[SNMP] Error in enhanced device type detection: ${enhancedTypeError.message}`);
+    }
+    
     logger.info(`[SNMP] Device discovery completed for ${ip} - Identified as: ${deviceInfo.manufacturer || 'Unknown'} ${deviceInfo.model || ''} (${deviceInfo.type || 'Unknown Type'})`);
     
     // If we have a hostname from sysName, log it

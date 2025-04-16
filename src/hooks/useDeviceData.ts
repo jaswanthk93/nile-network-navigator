@@ -1,7 +1,10 @@
+
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { DeviceData } from "@/types/network";
+import { getDeviceInfoViaSNMP } from "@/utils/network/snmpDiscovery";
+import { determineDeviceTypeFromSNMP } from "@/utils/network/deviceIdentification";
 
 interface Device {
   id: string;
@@ -9,7 +12,7 @@ interface Device {
   hostname: string;
   make: string;
   model: string;
-  category: "AP" | "Switch" | "Controller" | "Router" | "Other";
+  category: "AP" | "Switch" | "Controller" | "Router" | "Server" | "Firewall" | "Other";
   status: "online" | "offline" | "unknown";
   needsVerification: boolean;
   confirmed: boolean;
@@ -48,7 +51,7 @@ export const useDeviceData = (userId: string | undefined) => {
       hostname: device.hostname || '',
       make: device.make || '',
       model: device.model || '',
-      category: (device.category as "AP" | "Switch" | "Controller" | "Router" | "Other") || 'Other',
+      category: (device.category as any) || 'Other',
       status: (device.status as "online" | "offline" | "unknown") || 'unknown',
       needsVerification: device.needs_verification || true,
       confirmed: device.confirmed || false,
@@ -56,10 +59,26 @@ export const useDeviceData = (userId: string | undefined) => {
       subnet_id: device.subnet_id
     }));
     
-    setDevices(transformedDevices);
+    // If any device is missing type info, let's try to determine it from sysDescr
+    const devicesWithFixedTypes = transformedDevices.map(device => {
+      if (device.category === 'Other' && device.sysDescr) {
+        // Try to determine type from sysDescr
+        const detectedType = determineDeviceTypeFromSNMP(device.sysDescr, '');
+        if (detectedType !== 'Other') {
+          return {
+            ...device,
+            category: detectedType as any,
+            needsVerification: false
+          };
+        }
+      }
+      return device;
+    });
+    
+    setDevices(devicesWithFixedTypes);
     setIsLoading(false);
     
-    console.log('Devices loaded:', transformedDevices);
+    console.log('Devices loaded:', devicesWithFixedTypes);
   };
 
   useEffect(() => {
@@ -198,12 +217,97 @@ export const useDeviceData = (userId: string | undefined) => {
     }
   };
 
+  // New function to try to detect device types for devices with missing information
+  const enhanceDeviceTypes = async () => {
+    const devicesToFix = devices.filter(d => 
+      d.category === 'Other' || !d.make || !d.model || d.needsVerification
+    );
+    
+    if (devicesToFix.length === 0) return;
+    
+    const updatedDevices = [...devices];
+    let updateCount = 0;
+    
+    for (const device of devicesToFix) {
+      try {
+        // Get more detailed info via SNMP
+        const deviceInfo = await getDeviceInfoViaSNMP(device.ipAddress, undefined, true);
+        
+        if (deviceInfo && !deviceInfo.error) {
+          // Update the device with the new information
+          const updates: any = {};
+          let deviceUpdated = false;
+          
+          if (deviceInfo.hostname && !device.hostname) {
+            updates.hostname = deviceInfo.hostname;
+            deviceUpdated = true;
+          }
+          
+          if (deviceInfo.make && !device.make) {
+            updates.make = deviceInfo.make;
+            deviceUpdated = true;
+          }
+          
+          if (deviceInfo.model && !device.model) {
+            updates.model = deviceInfo.model;
+            deviceUpdated = true;
+          }
+          
+          if (deviceInfo.category && (device.category === 'Other' || !device.category)) {
+            updates.category = deviceInfo.category;
+            deviceUpdated = true;
+          }
+          
+          if (deviceInfo.sysDescr && !device.sysDescr) {
+            updates.sysDescr = deviceInfo.sysDescr;
+            deviceUpdated = true;
+          }
+          
+          if (deviceUpdated) {
+            // Update the database
+            await supabase
+              .from('devices')
+              .update({
+                ...updates,
+                needs_verification: false
+              })
+              .eq('id', device.id);
+            
+            // Update the local state
+            const index = updatedDevices.findIndex(d => d.id === device.id);
+            if (index >= 0) {
+              updatedDevices[index] = {
+                ...updatedDevices[index],
+                ...updates,
+                needsVerification: false
+              };
+              updateCount++;
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error enhancing device ${device.ipAddress}:`, error);
+      }
+    }
+    
+    if (updateCount > 0) {
+      setDevices(updatedDevices);
+      toast({
+        title: "Devices updated",
+        description: `Enhanced information for ${updateCount} devices.`,
+      });
+    }
+  };
+
   return {
     devices,
     isLoading,
     handleSaveEdit,
     handleDeleteDevice,
     confirmAllDevices,
-    refreshDevices: fetchDevices
+    refreshDevices: async () => {
+      await fetchDevices();
+      await enhanceDeviceTypes();
+    }
   };
 };
