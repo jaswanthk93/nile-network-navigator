@@ -164,18 +164,50 @@ export const SiteCard = ({
     try {
       console.log(`Starting deletion process for site: ${id}`);
       
-      // Step 1: First we need to delete all MAC addresses for this site
-      // This needs to happen first because MAC addresses reference both subnets and sites
+      // Get all subnets for this site first
+      console.log("Fetching subnets for this site...");
+      const { data: subnetData, error: subnetFetchError } = await supabase
+        .from('subnets')
+        .select('id')
+        .eq('site_id', id);
+      
+      if (subnetFetchError) {
+        console.error("Error fetching subnets:", subnetFetchError);
+        throw new Error(`Failed to fetch subnets: ${subnetFetchError.message}`);
+      }
+      
+      const subnetIds = subnetData?.map(subnet => subnet.id) || [];
+      console.log(`Found ${subnetIds.length} subnets to delete`, subnetIds);
+      
+      // Step 1: Delete all MAC addresses for this site and its subnets
       console.log("Step 1: Deleting related MAC addresses...");
-      const { error: macError } = await supabase
+      
+      // First delete MACs by site_id
+      const { error: macSiteError } = await supabase
         .from('mac_addresses')
         .delete()
         .eq('site_id', id);
       
-      if (macError) {
-        console.error("Error deleting MAC addresses:", macError);
-        throw new Error(`Failed to delete MAC addresses: ${macError.message}`);
+      if (macSiteError) {
+        console.error("Error deleting MAC addresses by site_id:", macSiteError);
+        throw new Error(`Failed to delete MAC addresses by site_id: ${macSiteError.message}`);
       }
+      
+      // Then delete MACs by subnet_id for each subnet
+      if (subnetIds.length > 0) {
+        for (const subnetId of subnetIds) {
+          const { error: macSubnetError } = await supabase
+            .from('mac_addresses')
+            .delete()
+            .eq('subnet_id', subnetId);
+          
+          if (macSubnetError) {
+            console.error(`Error deleting MAC addresses for subnet ${subnetId}:`, macSubnetError);
+            throw new Error(`Failed to delete MAC addresses for subnet: ${macSubnetError.message}`);
+          }
+        }
+      }
+      
       console.log("MAC addresses deleted successfully");
       
       // Step 2: Delete VLAN information related to this site
@@ -193,29 +225,66 @@ export const SiteCard = ({
       
       // Step 3: Delete devices related to this site
       console.log("Step 3: Deleting related devices...");
-      const { error: deviceError } = await supabase
+      
+      // Delete devices by site_id
+      const { error: deviceSiteError } = await supabase
         .from('devices')
         .delete()
         .eq('site_id', id);
       
-      if (deviceError) {
-        console.error("Error deleting devices:", deviceError);
-        throw new Error(`Failed to delete devices: ${deviceError.message}`);
+      if (deviceSiteError) {
+        console.error("Error deleting devices by site_id:", deviceSiteError);
+        throw new Error(`Failed to delete devices by site_id: ${deviceSiteError.message}`);
       }
+      
+      // Delete devices by subnet_id for each subnet
+      if (subnetIds.length > 0) {
+        for (const subnetId of subnetIds) {
+          const { error: deviceSubnetError } = await supabase
+            .from('devices')
+            .delete()
+            .eq('subnet_id', subnetId);
+          
+          if (deviceSubnetError) {
+            console.error(`Error deleting devices for subnet ${subnetId}:`, deviceSubnetError);
+            throw new Error(`Failed to delete devices for subnet: ${deviceSubnetError.message}`);
+          }
+        }
+      }
+      
       console.log("Devices deleted successfully");
       
-      // Step 4: Delete subnets related to this site
-      // This can only happen after devices and MAC addresses are deleted
-      console.log("Step 4: Deleting related subnets...");
-      const { error: subnetError } = await supabase
-        .from('subnets')
-        .delete()
-        .eq('site_id', id);
-      
-      if (subnetError) {
-        console.error("Error deleting subnets:", subnetError);
-        throw new Error(`Failed to delete subnets: ${subnetError.message}`);
+      // Step 4: Now delete subnets related to this site
+      if (subnetIds.length > 0) {
+        console.log("Step 4: Deleting related subnets...");
+        
+        // Verify no MAC addresses exist for these subnets before deletion
+        const { count: remainingMacs, error: macCheckError } = await supabase
+          .from('mac_addresses')
+          .select('*', { count: 'exact', head: true })
+          .in('subnet_id', subnetIds);
+        
+        if (macCheckError) {
+          console.error("Error checking for remaining MAC addresses:", macCheckError);
+          throw new Error(`Failed to check for remaining MAC addresses: ${macCheckError.message}`);
+        }
+        
+        if (remainingMacs && remainingMacs > 0) {
+          console.error(`Found ${remainingMacs} MAC addresses still linked to subnets`);
+          throw new Error(`Cannot delete subnets: ${remainingMacs} MAC addresses still reference them`);
+        }
+        
+        const { error: subnetError } = await supabase
+          .from('subnets')
+          .delete()
+          .eq('site_id', id);
+        
+        if (subnetError) {
+          console.error("Error deleting subnets:", subnetError);
+          throw new Error(`Failed to delete subnets: ${subnetError.message}`);
+        }
       }
+      
       console.log("Subnets deleted successfully");
       
       // Step 5: Finally, delete the site itself
