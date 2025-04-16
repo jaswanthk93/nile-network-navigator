@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 
@@ -186,7 +187,7 @@ export const deleteSite = async ({
         
         console.log("Emergency: attempting to delete remaining MAC addresses...");
         for (const subnetId of subnetIds) {
-          await supabase.rpc('force_delete_macs_by_subnet', subnetId);
+          await supabase.rpc('force_delete_macs_by_subnet', { subnetId });
         }
         
         const { count: emergencyCheck, error: emergencyCheckError } = await supabase
