@@ -1,3 +1,4 @@
+
 import { DiscoveredDevice } from "@/types/network";
 import * as ipUtils from "./ipUtils";
 import * as deviceIdentification from "./deviceIdentification";
@@ -7,6 +8,7 @@ import { discoverVlans } from "./vlanDiscovery";
 
 /**
  * Run discovery on a specific IP address
+ * Enhanced to include more detailed SNMP queries for precise device identification
  */
 export async function discoverIP(
   ipAddress: string,
@@ -40,6 +42,10 @@ export async function discoverIP(
     
     // Collect more detailed device info via SNMP
     try {
+      if (updateProgress) {
+        updateProgress(`Getting detailed device information via SNMP for ${ipAddress}...`, 25);
+      }
+      
       const deviceInfo = await getDeviceInfoViaSNMP(ipAddress, updateProgress, backendConnected);
       
       if (deviceInfo && !deviceInfo.error) {
@@ -49,6 +55,13 @@ export async function discoverIP(
         discoveredDevice.model = deviceInfo.model || null;
         discoveredDevice.category = deviceInfo.category || null;
         discoveredDevice.sysDescr = deviceInfo.sysDescr || null;
+        
+        console.log(`SNMP discovery details for ${ipAddress}:`, {
+          hostname: deviceInfo.hostname,
+          make: deviceInfo.make,
+          model: deviceInfo.model,
+          category: deviceInfo.category
+        });
         
         // If this appears to be a switch, discover VLANs and MAC addresses
         if (deviceInfo.category === 'Switch' || deviceInfo.category === 'Router') {

@@ -1,4 +1,3 @@
-
 /**
  * Device identification utilities for network discovery
  */
@@ -29,7 +28,8 @@ export const SNMP_OIDS = {
   sysObjectID: "1.3.6.1.2.1.1.2.0",
   sysUpTime: "1.3.6.1.2.1.1.3.0",
   ifNumber: "1.3.6.1.2.1.2.1.0",
-  ifDescr: "1.3.6.1.2.1.2.2.1.2"
+  ifDescr: "1.3.6.1.2.1.2.2.1.2",
+  entityPhysicalName: "1.3.6.1.2.1.47.1.1.1.1.13"
 };
 
 // Get manufacturer from sysObjectID
@@ -68,6 +68,29 @@ export function parseModelFromSNMP(sysDescr: string, manufacturer: string | null
   const genericModelRegex = /[A-Z0-9]+-[A-Z0-9]+/;
   const match = sysDescr.match(genericModelRegex);
   return match ? match[0] : null;
+}
+
+// New function: Extract exact model from Entity MIB response
+export function getExactModelFromEntityMIB(entityMIBData: Record<string, string>): string | null {
+  if (!entityMIBData || Object.keys(entityMIBData).length === 0) {
+    return null;
+  }
+  
+  // Sort the OIDs to process them in order (lower indices first)
+  const sortedOids = Object.keys(entityMIBData).sort();
+  
+  // Check the first few entries for a non-empty model string
+  for (const oid of sortedOids.slice(0, 5)) { // Only check first 5 entries
+    const value = entityMIBData[oid]?.trim();
+    if (value && value.length > 0 && value !== '""') {
+      // For Cisco WS-C format models, return as is
+      if (value.startsWith('WS-C') || value.startsWith('C')) {
+        return value.trim();
+      }
+    }
+  }
+  
+  return null;
 }
 
 // Determine device type from SNMP information

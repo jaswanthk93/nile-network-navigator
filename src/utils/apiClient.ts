@@ -161,20 +161,32 @@ export async function executeSnmpQueries(
  */
 export async function executeSnmpWalk(
   deviceIp: string,
-  oid: string
+  oid: string,
+  options?: { 
+    community?: string; 
+    version?: string;
+    timeout?: number;
+  }
 ): Promise<any> {
   try {
     console.log(`Executing SNMP WALK on device ${deviceIp} for OID ${oid}...`);
+    
+    const requestData = {
+      ip: deviceIp,
+      oid,
+      community: options?.community || 'public',
+      version: options?.version || '2c'
+    };
+    
+    const timeout = options?.timeout || 15000; // Default to 15 seconds timeout
     
     const response = await fetch(`${BACKEND_URL}/snmp/walk`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        ip: deviceIp,
-        oid
-      })
+      body: JSON.stringify(requestData),
+      signal: AbortSignal.timeout(timeout)
     });
     
     if (!response.ok) {

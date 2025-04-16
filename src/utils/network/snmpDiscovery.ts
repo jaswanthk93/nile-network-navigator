@@ -1,8 +1,8 @@
-
 import { DiscoveredMacAddress } from "@/types/network";
 import { executeSnmpWalk, callBackendApi } from "@/utils/apiClient";
 import { useToast, toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { SNMP_OIDS, getExactModelFromEntityMIB } from "./deviceIdentification";
 
 interface MacAddressDiscoveryResult {
   macAddresses: DiscoveredMacAddress[];
@@ -12,7 +12,7 @@ interface MacAddressDiscoveryResult {
 
 /**
  * Get device information via SNMP
- * This is a simplified version that only returns basic device info
+ * Enhanced to include Entity MIB queries for exact model identification
  */
 export async function getDeviceInfoViaSNMP(
   ip: string,
@@ -27,6 +27,8 @@ export async function getDeviceInfoViaSNMP(
     // When backend is connected, use real SNMP discovery
     if (backendConnected) {
       console.log(`Discovering device info for ${ip} using backend API`);
+      
+      // First get basic device info
       const { data, error } = await fetch('/api/devices/discover', {
         method: 'POST',
         headers: {
@@ -44,6 +46,24 @@ export async function getDeviceInfoViaSNMP(
         return { error };
       }
 
+      // Next, try to get exact model information from Entity MIB
+      let exactModel = null;
+      try {
+        console.log(`Getting exact model information from Entity MIB for ${ip}`);
+        const entityMIBResponse = await executeSnmpWalk(ip, SNMP_OIDS.entityPhysicalName);
+        
+        if (entityMIBResponse && !entityMIBResponse.error) {
+          console.log(`Entity MIB response for ${ip}:`, entityMIBResponse);
+          exactModel = getExactModelFromEntityMIB(entityMIBResponse.results || {});
+          
+          if (exactModel) {
+            console.log(`Found exact model from Entity MIB: ${exactModel}`);
+          }
+        }
+      } catch (modelError) {
+        console.warn(`Error getting exact model info via Entity MIB: ${modelError}`);
+      }
+
       if (updateProgress) {
         updateProgress(`Received SNMP information for ${ip}`, 10);
       }
@@ -52,7 +72,7 @@ export async function getDeviceInfoViaSNMP(
       const deviceInfo = {
         hostname: data?.device?.sysName || null, // Using sysName directly as the hostname
         make: data?.device?.manufacturer || null,
-        model: data?.device?.model || null,
+        model: exactModel || data?.device?.model || null, // Prioritize exact model if available
         category: data?.device?.type || 'Unknown',
         sysDescr: data?.device?.sysDescr || null
       };

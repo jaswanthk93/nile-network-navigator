@@ -4,6 +4,7 @@ const vlanHandler = require('../vlanHandler');
 
 /**
  * Discover device details using SNMP
+ * Enhanced to include Entity MIB queries for exact model information
  */
 exports.discoverDevice = async (req, res) => {
   try {
@@ -14,8 +15,92 @@ exports.discoverDevice = async (req, res) => {
     }
     
     logger.info(`[SNMP] Starting STRICTLY focused device discovery for ${ip} using SNMPv${version}`);
-    logger.info(`[SNMP] Will ONLY query the essential system OIDs - nothing else`);
+    logger.info(`[SNMP] Will query the essential system OIDs and Entity MIB for precise model identification`);
+    
+    // First get the standard device info
     const deviceInfo = await deviceDiscovery.discoverDeviceInfo(ip, community, version);
+    
+    // If this is a Cisco device, attempt to get the precise model information from Entity MIB
+    if (deviceInfo.manufacturer === 'Cisco') {
+      try {
+        logger.info(`[SNMP] Querying Entity MIB for exact model information on ${ip}`);
+        const entityMibOid = '1.3.6.1.2.1.47.1.1.1.1.13';
+        
+        // Create a new SNMP session for this specific query
+        const snmp = require('net-snmp');
+        const snmpVersion = version === '1' ? snmp.Version1 : snmp.Version2c;
+        const session = snmp.createSession(ip, community, {
+          version: snmpVersion,
+          retries: 1,
+          timeout: 5000
+        });
+        
+        // Perform a targeted walk of the Entity MIB
+        const exactModelInfo = await new Promise((resolve, reject) => {
+          logger.info(`[SNMP] Walking OID ${entityMibOid} for precise model identification`);
+          
+          const results = {};
+          session.walk(entityMibOid, 10, (varbinds) => {
+            // Each varbind contains OID and value for that OID
+            for (let i = 0; i < varbinds.length; i++) {
+              if (snmp.isVarbindError(varbinds[i])) {
+                logger.warn(`[SNMP] Error for OID ${varbinds[i].oid}: ${snmp.varbindError(varbinds[i])}`);
+                continue;
+              }
+              
+              // Get the value (model string)
+              const value = varbinds[i].value;
+              let modelString = null;
+              
+              if (Buffer.isBuffer(value)) {
+                modelString = value.toString().trim();
+              } else if (typeof value === 'string') {
+                modelString = value.trim();
+              }
+              
+              if (modelString && modelString.length > 0) {
+                results[varbinds[i].oid] = modelString;
+                logger.info(`[ENTITY-MIB] Found model component: ${varbinds[i].oid} = ${modelString}`);
+              }
+            }
+          }, (error) => {
+            if (error) {
+              logger.warn(`[SNMP] Error walking Entity MIB: ${error.message}`);
+              // Don't reject, just return empty results
+              resolve({});
+            } else {
+              // Return all discovered model strings
+              resolve(results);
+            }
+            session.close();
+          });
+        });
+        
+        // Process results to find the exact model
+        if (Object.keys(exactModelInfo).length > 0) {
+          // Sort the OIDs numerically (to get the first few entries which typically have chassis info)
+          const sortedOids = Object.keys(exactModelInfo).sort();
+          
+          // Look for the chassis model which is typically one of the first entries
+          for (const oid of sortedOids.slice(0, 5)) {
+            const modelString = exactModelInfo[oid];
+            
+            // If we find a WS-C model string, this is likely the main chassis
+            if (modelString && (modelString.startsWith('WS-C') || modelString.startsWith('C'))) {
+              logger.info(`[SNMP] Found exact model from Entity MIB: ${modelString}`);
+              deviceInfo.exactModel = modelString;
+              
+              // Update the model field with this more precise information
+              deviceInfo.model = modelString;
+              break;
+            }
+          }
+        }
+      } catch (entityMibError) {
+        logger.warn(`[SNMP] Error querying Entity MIB: ${entityMibError.message}`);
+      }
+    }
+    
     logger.info(`[SNMP] Device discovery completed for ${ip} - Identified as: ${deviceInfo.manufacturer || 'Unknown'} ${deviceInfo.model || ''} (${deviceInfo.type || 'Unknown Type'})`);
     
     // If we have a hostname from sysName, log it
