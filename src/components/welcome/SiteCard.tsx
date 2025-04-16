@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { 
@@ -175,7 +176,8 @@ export const SiteCard = ({
         throw new Error(`Failed to fetch subnets: ${subnetFetchError.message}`);
       }
       
-      const subnetIds = subnetData?.map(subnet => subnet.id) || [];
+      // Fix for TypeScript error - ensure subnetIds is properly typed as string[]
+      const subnetIds: string[] = subnetData?.map(subnet => subnet.id) || [];
       console.log(`Found ${subnetIds.length} subnets to delete`, subnetIds);
       
       // Step 1: Delete ALL MAC addresses related to this site and its subnets
@@ -242,10 +244,12 @@ export const SiteCard = ({
       
       // Try to delete all remaining MAC addresses with one final sweep
       console.log("Final sweep to delete any remaining MAC addresses...");
-      await supabase
-        .from('mac_addresses')
-        .delete()
-        .in('subnet_id', subnetIds);
+      if (subnetIds.length > 0) {
+        await supabase
+          .from('mac_addresses')
+          .delete()
+          .in('subnet_id', subnetIds);
+      }
       
       console.log("MAC addresses deletion complete");
       
