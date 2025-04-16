@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { 
@@ -164,7 +163,6 @@ export const SiteCard = ({
     try {
       console.log(`Starting deletion process for site: ${id}`);
       
-      // Get all subnets for this site first
       console.log("Fetching subnets for this site...");
       const { data: subnetData, error: subnetFetchError } = await supabase
         .from('subnets')
@@ -176,14 +174,11 @@ export const SiteCard = ({
         throw new Error(`Failed to fetch subnets: ${subnetFetchError.message}`);
       }
       
-      // Make sure subnetIds is properly typed for the .in() method
       const subnetIds = (subnetData?.map(subnet => subnet.id) || []);
       console.log(`Found ${subnetIds.length} subnets to delete`, subnetIds);
       
-      // Step 1: Delete ALL MAC addresses related to this site and its subnets
       console.log("Step 1: Deleting ALL MAC addresses...");
       
-      // First try to delete MAC addresses by site_id
       console.log("Deleting MAC addresses by site_id...");
       const { error: macSiteError } = await supabase
         .from('mac_addresses')
@@ -195,7 +190,6 @@ export const SiteCard = ({
         throw new Error(`Failed to delete MAC addresses by site_id: ${macSiteError.message}`);
       }
       
-      // Then delete MACs by subnet_id for each subnet (belt and suspenders approach)
       if (subnetIds.length > 0) {
         console.log("Deleting MAC addresses by subnet_id for each subnet...");
         for (const subnetId of subnetIds) {
@@ -211,7 +205,6 @@ export const SiteCard = ({
         }
       }
       
-      // If any specific subnet has too many MAC addresses, try to delete them in batches
       if (subnetIds.length > 0) {
         console.log("Checking for any remaining MAC addresses by subnet...");
         for (const subnetId of subnetIds) {
@@ -242,14 +235,12 @@ export const SiteCard = ({
         }
       }
       
-      // Try to delete all remaining MAC addresses with one final sweep
       console.log("Final sweep to delete any remaining MAC addresses...");
       if (subnetIds.length > 0) {
-        // Fix for TypeScript error - use explicit type cast for subnetIds
         const { error: finalSweepError } = await supabase
           .from('mac_addresses')
           .delete()
-          .in('subnet_id', subnetIds as any);
+          .in('subnet_id', subnetIds as string[]);
           
         if (finalSweepError) {
           console.error("Error in final MAC address sweep:", finalSweepError);
@@ -258,7 +249,6 @@ export const SiteCard = ({
       
       console.log("MAC addresses deletion complete");
       
-      // Step 2: Delete VLAN information related to this site
       console.log("Step 2: Deleting related VLANs...");
       const { error: vlanError } = await supabase
         .from('vlans')
@@ -271,10 +261,8 @@ export const SiteCard = ({
       }
       console.log("VLANs deleted successfully");
       
-      // Step 3: Delete devices related to this site
       console.log("Step 3: Deleting related devices...");
       
-      // Delete devices by site_id
       const { error: deviceSiteError } = await supabase
         .from('devices')
         .delete()
@@ -285,7 +273,6 @@ export const SiteCard = ({
         throw new Error(`Failed to delete devices by site_id: ${deviceSiteError.message}`);
       }
       
-      // Delete devices by subnet_id for each subnet
       if (subnetIds.length > 0) {
         for (const subnetId of subnetIds) {
           const { error: deviceSubnetError } = await supabase
@@ -302,11 +289,9 @@ export const SiteCard = ({
       
       console.log("Devices deleted successfully");
       
-      // Step 4: VERY IMPORTANT - Verify no MAC addresses exist for these subnets before deletion
       if (subnetIds.length > 0) {
         console.log("Step 4: Verifying no MAC addresses remain before deleting subnets...");
         
-        // First check by site_id
         const { count: siteRemainingMacs, error: siteCheckError } = await supabase
           .from('mac_addresses')
           .select('*', { count: 'exact', head: true })
@@ -323,12 +308,10 @@ export const SiteCard = ({
           throw new Error(errorMsg);
         }
         
-        // Then check by subnet_id
-        // Fix for TypeScript error - use explicit type cast for subnetIds
         const { count: subnetRemainingMacs, error: subnetCheckError } = await supabase
           .from('mac_addresses')
           .select('*', { count: 'exact', head: true })
-          .in('subnet_id', subnetIds as any);
+          .in('subnet_id', subnetIds as string[]);
         
         if (subnetCheckError) {
           console.error("Error checking for subnet MAC addresses:", subnetCheckError);
@@ -339,18 +322,15 @@ export const SiteCard = ({
           const errorMsg = `Cannot delete subnets: ${subnetRemainingMacs} MAC addresses still reference them`;
           console.error(errorMsg);
           
-          // One last attempt to delete the remaining MAC addresses
           console.log("Emergency: attempting to delete remaining MAC addresses...");
           for (const subnetId of subnetIds) {
             await supabase.rpc('force_delete_macs_by_subnet', { subnet_id_param: subnetId });
           }
           
-          // Check if the emergency deletion worked
-          // Fix for TypeScript error - use explicit type cast for subnetIds
           const { count: emergencyCheck, error: emergencyCheckError } = await supabase
             .from('mac_addresses')
             .select('*', { count: 'exact', head: true })
-            .in('subnet_id', subnetIds as any);
+            .in('subnet_id', subnetIds as string[]);
             
           if (emergencyCheckError || (emergencyCheck && emergencyCheck > 0)) {
             throw new Error(errorMsg);
@@ -358,7 +338,6 @@ export const SiteCard = ({
         }
       }
       
-      // Step 5: Now delete subnets related to this site
       console.log("Step 5: Deleting subnets...");
       const { error: subnetError } = await supabase
         .from('subnets')
@@ -372,7 +351,6 @@ export const SiteCard = ({
       
       console.log("Subnets deleted successfully");
       
-      // Step 6: Finally, delete the site itself
       console.log("Step 6: Deleting site...");
       const { error: siteError } = await supabase
         .from('sites')
@@ -390,7 +368,6 @@ export const SiteCard = ({
         description: `Site "${name}" and all associated data have been removed.`,
       });
       
-      // If we get here, all deletions were successful
       onDelete();
     } catch (error) {
       console.error("Error in deletion process:", error);
