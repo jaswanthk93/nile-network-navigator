@@ -135,6 +135,36 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          company_name: string | null
+          created_at: string | null
+          first_name: string | null
+          id: string
+          is_approved: boolean | null
+          last_name: string | null
+          phone_number: string | null
+        }
+        Insert: {
+          company_name?: string | null
+          created_at?: string | null
+          first_name?: string | null
+          id: string
+          is_approved?: boolean | null
+          last_name?: string | null
+          phone_number?: string | null
+        }
+        Update: {
+          company_name?: string | null
+          created_at?: string | null
+          first_name?: string | null
+          id?: string
+          is_approved?: boolean | null
+          last_name?: string | null
+          phone_number?: string | null
+        }
+        Relationships: []
+      }
       sites: {
         Row: {
           created_at: string

@@ -14,13 +14,15 @@ type RegisterData = {
   password: string;
 };
 
+// Define Profile type to match the table structure
 type Profile = {
   id: string;
   first_name: string;
   last_name: string;
+  company_name: string | null;
+  phone_number: string | null;
   is_approved: boolean;
-  company_name: string;
-  phone_number: string;
+  created_at: string;
 };
 
 type AuthContextType = {
@@ -58,21 +60,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Function to fetch user profile
   const fetchUserProfile = async (userId: string) => {
     try {
-      // First check if the profiles table exists, if not, handle gracefully
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (profileError) {
-        console.error('Error fetching user profile:', profileError);
+      // Check if the user exists
+      if (!userId) {
+        console.error('Cannot fetch profile: No user ID provided');
         return null;
       }
 
-      if (profileData) {
-        setProfile(profileData as Profile);
-        return profileData;
+      // Fetch the user's profile
+      const { data, error } = await supabase
+        .from('profiles')
+        .select()
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        return null;
+      }
+
+      if (data) {
+        setProfile(data as Profile);
+        return data as Profile;
       }
       
       return null;
@@ -149,7 +157,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
       
       if (!error) {
-        const userProfile = await fetchUserProfile((await supabase.auth.getUser()).data.user?.id || '');
+        const currentUser = (await supabase.auth.getUser()).data.user;
+        if (!currentUser) {
+          return { error: new Error('Failed to get user after sign in') };
+        }
+        
+        const userProfile = await fetchUserProfile(currentUser.id);
         
         if (userProfile && !userProfile.is_approved) {
           // If not approved, show a message and sign them out
