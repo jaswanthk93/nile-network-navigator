@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Logo } from '@/components/Logo';
 import { useEffect } from 'react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ExclamationTriangleIcon } from '@radix-ui/react-icons';
+import { AlertTriangle } from 'lucide-react';
 
 const AuthLayout = () => {
   const { isAuthenticated, isLoading, isApproved } = useAuth();
@@ -31,7 +31,7 @@ const AuthLayout = () => {
         <main className="flex flex-1 flex-col items-center justify-center p-4 md:p-8 lg:p-12">
           <div className="mx-auto grid w-full max-w-md gap-6">
             <Alert variant="destructive">
-              <ExclamationTriangleIcon className="h-4 w-4" />
+              <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Account Pending Approval</AlertTitle>
               <AlertDescription>
                 Your account is awaiting administrator approval. You'll receive an email when your account has been approved.

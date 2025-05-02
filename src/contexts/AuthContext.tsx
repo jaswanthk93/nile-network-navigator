@@ -58,19 +58,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Function to fetch user profile
   const fetchUserProfile = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      // First check if the profiles table exists, if not, handle gracefully
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
 
-      if (error) {
-        console.error('Error fetching user profile:', error);
+      if (profileError) {
+        console.error('Error fetching user profile:', profileError);
         return null;
       }
 
-      setProfile(data);
-      return data;
+      if (profileData) {
+        setProfile(profileData as Profile);
+        return profileData;
+      }
+      
+      return null;
     } catch (error) {
       console.error('Exception fetching user profile:', error);
       return null;
@@ -146,7 +151,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (!error) {
         const userProfile = await fetchUserProfile((await supabase.auth.getUser()).data.user?.id || '');
         
-        if (!userProfile?.is_approved) {
+        if (userProfile && !userProfile.is_approved) {
           // If not approved, show a message and sign them out
           toast({
             title: "Account Pending Approval",
