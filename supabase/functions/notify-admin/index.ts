@@ -35,8 +35,11 @@ serve(async (req) => {
   try {
     const payload: WebhookPayload = await req.json();
     
+    console.log("Received webhook payload:", JSON.stringify(payload, null, 2));
+    
     // Only handle insert events for auth.users
     if (payload.type !== "INSERT" || payload.table !== "users" || payload.schema !== "auth") {
+      console.log("Not a user insert event:", payload.type, payload.table, payload.schema);
       return new Response(JSON.stringify({ message: "Not a relevant event" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
@@ -45,6 +48,20 @@ serve(async (req) => {
 
     const { record } = payload;
     const { email, user_metadata } = record;
+    
+    console.log("Processing user registration:", email, user_metadata);
+    
+    if (!user_metadata || !user_metadata.first_name) {
+      console.error("Missing user metadata in the webhook payload");
+      return new Response(
+        JSON.stringify({ error: "Invalid user data in webhook payload" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        }
+      );
+    }
+    
     const { first_name, last_name, company_name, phone_number } = user_metadata;
 
     // Prepare email data
@@ -79,6 +96,7 @@ serve(async (req) => {
     }
 
     // Send email using Resend
+    console.log("Sending email notification to admin:", ADMIN_EMAIL);
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -96,6 +114,7 @@ serve(async (req) => {
     const responseData = await response.json();
 
     if (!response.ok) {
+      console.error("Failed to send email:", response.status, JSON.stringify(responseData));
       throw new Error(`Failed to send email: ${JSON.stringify(responseData)}`);
     }
 
