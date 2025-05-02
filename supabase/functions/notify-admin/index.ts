@@ -12,6 +12,7 @@ interface WebhookPayload {
       first_name: string;
       last_name: string;
       company_name: string;
+      phone_number: string;
     };
   };
   schema: string;
@@ -22,6 +23,8 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const ADMIN_EMAIL = "jaswanth@nilesecure.com";
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -40,22 +43,65 @@ serve(async (req) => {
       });
     }
 
-    // You'll need to replace this with your preferred email service
-    // For this example, we'll just log the information that would be sent
-    console.log("A new user has registered and needs approval:");
-    console.log(`Email: ${payload.record.email}`);
-    console.log(`Name: ${payload.record.user_metadata.first_name} ${payload.record.user_metadata.last_name}`);
-    console.log(`Company: ${payload.record.user_metadata.company_name}`);
+    const { record } = payload;
+    const { email, user_metadata } = record;
+    const { first_name, last_name, company_name, phone_number } = user_metadata;
+
+    // Prepare email data
+    const emailData = {
+      to: ADMIN_EMAIL,
+      subject: "New User Registration Requires Approval",
+      html: `
+        <h2>New User Registration</h2>
+        <p>A new user has registered and needs approval:</p>
+        <ul>
+          <li><strong>Name:</strong> ${first_name} ${last_name}</li>
+          <li><strong>Email:</strong> ${email}</li>
+          <li><strong>Company:</strong> ${company_name || 'Not provided'}</li>
+          <li><strong>Phone:</strong> ${phone_number || 'Not provided'}</li>
+        </ul>
+        <p>To approve this user, please go to the <a href="${Deno.env.get('SUPABASE_URL') || ''}/dashboard/project/yybospaazevrtngcpbmb/auth/users">Supabase Dashboard</a> and update their profile.</p>
+      `,
+    };
+
+    // Get API key from environment variable
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
     
-    // Here you would integrate with your email service, e.g., SendGrid, Resend, etc.
-    // This would send an email to admin(s) with a link to approve the user
+    if (!resendApiKey) {
+      console.error("Missing RESEND_API_KEY environment variable");
+      return new Response(
+        JSON.stringify({ error: "Email service configuration is incomplete" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
+        }
+      );
+    }
+
+    // Send email using Resend
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${resendApiKey}`,
+      },
+      body: JSON.stringify({
+        from: "Nile Network Navigator <onboarding@resend.dev>",
+        to: emailData.to,
+        subject: emailData.subject,
+        html: emailData.html,
+      }),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(`Failed to send email: ${JSON.stringify(responseData)}`);
+    }
+
+    console.log("Email notification sent to admin:", responseData);
     
-    // For a complete implementation, you would need to:
-    // 1. Retrieve a list of admin emails from a table or environment variable
-    // 2. Format an approval email with a link to an admin panel
-    // 3. Send the email via your preferred email provider
-    
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, message: "Admin notification email sent" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
@@ -65,7 +111,7 @@ serve(async (req) => {
       JSON.stringify({ error: error.message }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
+        status: 500,
       }
     );
   }
